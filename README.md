@@ -111,11 +111,11 @@ Runs against the `ordering_test` database (dropped and migrated on each run). Co
 
 ## Deploy (Vercel + Supabase)
 
-Redeploy after a change (from the repo root, Vercel CLI logged in):
+The Vercel project is connected to this GitHub repo:
 
-```bash
-vercel deploy --prod --scope ammars-projects-79cd5d73
-```
+- **Push to `main`** → automatic production deploy to https://ordering-demo-three.vercel.app
+- **Push to any other branch / open a PR** → automatic preview deploy with its own URL (previews use the same database, so test carefully)
+- Manual deploy from the repo root, if ever needed: `vercel deploy --prod --scope ammars-projects-79cd5d73`
 
 Schema changes: add an Alembic migration, then apply it to Supabase (`cd backend && ../.venv/bin/alembic upgrade <current>:head --sql` gives the SQL).
 
