@@ -73,6 +73,268 @@ api/index.py     Vercel serverless entry          vercel.json  Vercel config
 - **WhatsApp-ready:** every bot message is validated against WhatsApp limits (3 buttons, 10 list rows, title lengths) before it is stored.
 - **Serverless-friendly:** conversation state and the per-customer lock live in Postgres (`conversations` row + `SELECT … FOR UPDATE`), no worker, and the dashboard / chat poll every 2–3 s instead of SSE.
 
+## Database schema
+
+PostgreSQL, managed with Alembic (`backend/alembic/versions/`). The source of truth is `backend/app/models.py`. Conventions: every table a restaurant owns has `restaurant_id` (deleting a restaurant cascades to all of its data); money is `NUMERIC`; timestamps are `timestamptz`; Arabic display text columns end in `_ar`. Row-level security is enabled on every table (deny-all for Supabase's public API; the app connects as the table owner).
+
+### Restaurants, accounts and menu
+
+```mermaid
+erDiagram
+    restaurants |o--o{ users : "owner / staff (super admin has none)"
+    restaurants ||--o{ settings : "configured by"
+    restaurants ||--o{ categories : has
+    restaurants ||--o{ addons : has
+    restaurants ||--o{ delivery_zones : has
+    categories ||--o{ items : contains
+    items ||--|{ item_variants : "priced by (1 or more)"
+    categories ||--o{ category_addons : allows
+    addons ||--o{ category_addons : "offered in"
+
+    restaurants {
+        int id PK
+        string slug UK "URL name, e.g. dash"
+        text name_ar
+        string status "trial | active | suspended | archived"
+        bool demo_mode "new orders get is_demo"
+        string timezone "Africa/Cairo"
+        timestamptz created_at
+    }
+    users {
+        int id PK
+        int restaurant_id FK "NULL only for super_admin"
+        string username UK
+        text display_name
+        text password_hash "argon2"
+        string role "super_admin | owner | staff"
+        bool active
+        timestamptz created_at
+    }
+    settings {
+        int restaurant_id PK, FK
+        string key PK
+        jsonb value
+    }
+    categories {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        int sort
+        bool active "hidden from customers when false"
+    }
+    items {
+        int id PK
+        int restaurant_id FK
+        int category_id FK
+        text name_ar
+        text description_ar
+        text image_url
+        bool available "sold-out switch"
+        int sort
+    }
+    item_variants {
+        int id PK
+        int item_id FK
+        text name_ar "e.g. single / double; NULL = one price"
+        numeric price "CHECK >= 0"
+        bool available
+        int sort
+    }
+    addons {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        numeric price "CHECK >= 0"
+        bool available
+        int sort
+    }
+    category_addons {
+        int category_id PK, FK
+        int addon_id PK, FK
+        numeric price_override "NULL = addon price"
+    }
+    delivery_zones {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        numeric fee
+        numeric min_order "0 = use the restaurant setting"
+        bool active
+        int sort
+    }
+```
+
+### Customers, chats and orders
+
+```mermaid
+erDiagram
+    restaurants ||--o{ customers : has
+    restaurants ||--o{ conversations : has
+    restaurants ||--o{ orders : receives
+    restaurants ||--o{ order_counters : numbers
+    customers |o--o{ conversations : chats
+    conversations ||--o{ messages : contains
+    customers ||--o{ orders : places
+    conversations |o--o{ orders : "placed from (chat orders)"
+    delivery_zones |o--o{ orders : "delivered to"
+    delivery_zones |o--o{ customers : "last used zone"
+    orders ||--|{ order_items : contains
+    order_items ||--o{ order_item_addons : with
+    orders ||--|{ order_status_events : "status history"
+
+    customers {
+        int id PK
+        int restaurant_id FK
+        string phone "UNIQUE per restaurant, e.g. 201012345678"
+        text name
+        text last_address
+        int last_zone_id FK
+        timestamptz created_at
+    }
+    conversations {
+        bigint id PK
+        int restaurant_id FK
+        string channel "web_chat | web_menu | whatsapp"
+        string customer_key "web session id, later WhatsApp phone"
+        int customer_id FK
+        string state "engine state, e.g. MAIN_MENU, CART"
+        jsonb data "cart and checkout progress"
+        timestamptz human_requested_at "set = staff alert"
+        timestamptz human_until "bot silent until"
+        timestamptz last_message_at
+        timestamptz created_at
+    }
+    messages {
+        bigint id PK
+        bigint conversation_id FK
+        int restaurant_id FK
+        string direction "in | out"
+        string sender "customer | bot | staff"
+        jsonb payload "text, buttons, list or reply"
+        string wa_message_id UK "dedupes WhatsApp retries"
+        timestamptz created_at
+    }
+    orders {
+        bigint id PK
+        int restaurant_id FK
+        int order_no "daily number, UNIQUE per restaurant and day"
+        date business_day "day starts at 05:00"
+        string public_token UK "tracking link"
+        int customer_id FK
+        bigint conversation_id FK
+        string channel "web_chat | web_menu | whatsapp"
+        string fulfillment "delivery | pickup"
+        int zone_id FK
+        text zone_name_snapshot
+        text address_text
+        numeric subtotal
+        numeric delivery_fee
+        numeric total
+        string payment_method "cod | wallet"
+        string payment_status "unpaid | proof_received | paid"
+        string status "see lifecycle below"
+        text reject_reason
+        text notes
+        int eta_minutes
+        bool is_demo
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    order_items {
+        bigint id PK
+        bigint order_id FK
+        int item_id "reference only, no FK"
+        int variant_id "reference only, no FK"
+        int half_item_id "reserved for half-and-half"
+        text name_snapshot
+        text variant_snapshot
+        numeric unit_price
+        int qty "CHECK > 0"
+        numeric line_total
+        text note
+    }
+    order_item_addons {
+        bigint id PK
+        bigint order_item_id FK
+        int addon_id "reference only, no FK"
+        text name_snapshot
+        numeric price
+    }
+    order_status_events {
+        bigint id PK
+        bigint order_id FK
+        string status
+        text actor "e.g. customer, staff:dash.staff"
+        timestamptz created_at
+    }
+    order_counters {
+        int restaurant_id PK, FK
+        date day PK
+        int last_no "atomic upsert gives the next order_no"
+    }
+```
+
+### Rules worth knowing
+
+- **Snapshots:** order lines copy the item name, size, prices and add-ons at order time, and `order_items.item_id` / `variant_id` are plain integers (no foreign key). Editing or deleting the menu never changes past orders.
+- **Delete behaviour:** deleting a restaurant cascades to everything it owns. Deleting a delivery zone sets `orders.zone_id` / `customers.last_zone_id` to NULL (the zone name stays in `zone_name_snapshot`). Deleting a chat keeps its orders (`conversation_id` becomes NULL).
+- **Uniqueness:** `restaurants.slug`, `users.username`, `customers (restaurant_id, phone)`, `conversations (restaurant_id, channel, customer_key)`, `orders (restaurant_id, business_day, order_no)`, `orders.public_token`, `messages.wa_message_id`.
+- **One message at a time per customer:** the engine locks the `conversations` row (`SELECT … FOR UPDATE`) while it handles a message.
+- **Order numbers:** `order_counters` is incremented with an atomic `INSERT … ON CONFLICT DO UPDATE … RETURNING`, so two simultaneous orders never get the same number.
+
+### Order lifecycle
+
+Enforced in `backend/app/services/orders.py`; any other transition returns HTTP 409.
+
+```mermaid
+stateDiagram-v2
+    [*] --> placed
+    placed --> accepted
+    placed --> rejected : with a reason
+    placed --> cancelled
+    accepted --> preparing
+    accepted --> cancelled
+    preparing --> out_for_delivery : delivery orders
+    preparing --> ready_for_pickup : pickup orders
+    out_for_delivery --> completed
+    ready_for_pickup --> completed
+    completed --> [*]
+    rejected --> [*]
+    cancelled --> [*]
+```
+
+The customer gets a chat message on `accepted` (with the ETA), `out_for_delivery`, `ready_for_pickup`, `rejected` (with the reason) and `cancelled`. `completed` marks cash orders as paid.
+
+### `settings` keys (one row per key per restaurant)
+
+| Key | Example | Meaning |
+|---|---|---|
+| `accepting_orders` | `true` | Open/closed switch on the dashboard |
+| `working_hours` | `{"sat": [["12:00","02:00"]], …}` | Ranges per weekday; a close time before the open time means past midnight |
+| `eta_minutes` | `35` | Expected time sent to customers |
+| `delivery_enabled` / `pickup_enabled` | `true` | Fulfillment options offered |
+| `delivery_fee` | `20` | Flat fee, used only when the restaurant has no active zones |
+| `min_order` | `0` | Delivery minimum (a zone's own minimum takes precedence) |
+| `payment_methods` | `["cod"]` | `cod` and/or `wallet` |
+| `wallet_number` | `""` | Shown to customers who pick wallet |
+| `business_day_starts` | `"05:00"` | Orders before this hour count for the previous day |
+| `contact_phone` | `""` | Restaurant phone |
+
+Missing keys fall back to the defaults in `backend/app/services/settings.py`.
+
+### JSON columns
+
+- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…item being built…}, "fulfillment", "zone_id", "address", "payment", "page", "fails", "last_order_id"}`. The cart holds ids only; prices are always recomputed from the menu tables.
+- `messages.payload`: outgoing `{"type": "text" | "buttons" | "list", …}` in the same shape as WhatsApp interactive messages (validated against WhatsApp limits before saving); incoming `{"type": "text", "text"}` or `{"type": "button_reply" | "list_reply", "id", "title"}`.
+
+### System tables
+
+| Table | Purpose |
+|---|---|
+| `rate_hits (id, bucket, created_at)` | Sliding-window counters for the login lockout and public rate limits (replaces Redis) |
+| `platform_secrets (key, value)` | Secrets generated inside the database, e.g. the session signing key |
+| `alembic_version` | Current migration |
+
 ## Local development
 
 Requires Python 3.12+, Node 20+, PostgreSQL 16+.
