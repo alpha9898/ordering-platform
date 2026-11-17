@@ -1,0 +1,19 @@
+.venv/
+.pgdata/
+__pycache__/
+*.pyc
+.env
+.env.local
+node_modules/
+web/dist/
+.vercel/
+.pytest_cache/
+test-results/
+playwright-report/
+.DS_Store
+.vercel
+.env*
+!.env.example
+
+# private / machine-specific
+docs/DASH_PLAN.md

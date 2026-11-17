@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/* Design tokens: light by default, dark via OS setting. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f1f3f6;
+  --border: #e3e6eb;
+  --fg: #14171c;
+  --muted: #5f6774;
+  --primary: #0f766e;
+  --primary-fg: #ffffff;
+  --primary-soft: #e6f4f2;
+  --danger: #c2410c;
+  --danger-soft: #fdeee6;
+  --warn: #b45309;
+  --warn-soft: #fef5e4;
+  --ok: #15803d;
+  --ok-soft: #e8f6ec;
+  --info: #1d4ed8;
+  --info-soft: #e9effd;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1215;
+    --surface: #171b20;
+    --surface-2: #1e232a;
+    --border: #2a3038;
+    --fg: #e9ecef;
+    --muted: #9aa3ae;
+    --primary: #2bb3a3;
+    --primary-fg: #06201d;
+    --primary-soft: #12302d;
+    --danger: #f08a5d;
+    --danger-soft: #3a2118;
+    --warn: #f0b45d;
+    --warn-soft: #3a2d16;
+    --ok: #5fcf86;
+    --ok-soft: #15301f;
+    --info: #7fa3f5;
+    --info-soft: #18233d;
+    color-scheme: dark;
+  }
+}
+
+@theme {
+  --font-sans: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warn) 45%, transparent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+.pulse-new {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-in {
+  animation: slide-up 0.22s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+/* WhatsApp-style chat wallpaper */
+.wa-wall {
+  background-color: #efeae2;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .wa-wall {
+    background-color: #0b141a;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-new, .sheet-in, .fade-in { animation: none; }
+}
