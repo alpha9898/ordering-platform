@@ -1,4 +1,423 @@
-# Ordering platform (web demo)
+<div align="center">
+
+# منصة الطلبات · Ordering platform
+
+**[العربية](#arabic)** &nbsp;·&nbsp; **[English](#english)**
+
+</div>
+
+<a id="arabic"></a>
+
+# منصة الطلبات (ديمو الويب)
+
+منصة طلبات لأكتر من مطعم. العميل بيطلب من **شات شبه واتساب** أو من **صفحة منيو على الويب**، والطلب بيوصل فورًا على **داشبورد المطعم**، واحنا بندير كل المطاعم من **لوحة الإدارة**. محرك الشات بيستخدم نفس أنواع رسايل واتساب وحدودها، فربط WhatsApp Cloud API بعدين هيبقى إضافة adapter (`backend/app/channels/whatsapp.py`) مش إعادة كتابة.
+
+أول مطعم: **Dash** (الـ slug بتاعه `dash`). المنيو الحالي **تجريبي** متعمل من الأمثلة اللي في خطة المشروع الأصلية؛ يتبدل بالمنيو الحقيقي من محرر المنيو في الداشبورد أو من استيراد Excel.
+
+## الروابط المباشرة
+
+الموقع الحي: **https://ordering-demo-three.vercel.app**
+
+### للعملاء (تتبعت لعملاء المطعم، أو للكلاينت وقت الديمو)
+
+| مين بيستخدمه | هو إيه | الرابط |
+| --- | --- | --- |
+| العملاء، والكلاينت وقت ديمو البيع (يفتحه من الموبايل أو يعمل scan للـ QR). | **محاكي واتساب.** شكله وطريقته زي بوت واتساب بالظبط: لستات، زراير، سلة، وتأكيد الطلب. بيسأل عن الاسم والموبايل مرة واحدة، وبعدها العميل بيطلب بالضغط. تحديثات الطلب من المطعم بتوصله في الشات. | https://ordering-demo-three.vercel.app/r/dash/chat |
+| العملاء اللي بيفضلوا صفحة طلب عادية (ينفع تتحط في إنستجرام/فيسبوك أو QR على الترابيزة). | **صفحة المنيو.** الأقسام، فردي/دبل والإضافات، السلة، توصيل أو استلام، وتأكيد الطلب. | https://ordering-demo-three.vercel.app/r/dash |
+| العميل صاحب الطلب. | **صفحة تتبع الطلب.** حالة الطلب لحظة بلحظة (اتبعت ← اتقبل ← بيتجهز ← خرج للتوصيل / جاهز ← اتسلم). الرابط بيطلع لوحده بعد الطلب من صفحة المنيو. | `https://ordering-demo-three.vercel.app/o/<token>` |
+
+أكواد الـ QR لرابط الشات ورابط المنيو موجودة في الداشبورد (تبويب **الإعدادات**) وفي لوحة الإدارة (زرار **إدارة** على كل مطعم).
+
+### للمطعم
+
+| مين بيستخدمه | هو إيه | الرابط |
+| --- | --- | --- |
+| أصحاب المطاعم، الموظفين، واحنا. | صفحة الدخول لكل اللي ليهم حسابات. | https://ordering-demo-three.vercel.app/login |
+| **صاحب المطعم** (`dash`): كل حاجة بما فيها الأسعار والمنيو والإعدادات. **الموظف** (`dash.staff`): الطلبات، الأصناف اللي خلصت، فتح/قفل الاستقبال، والوقت المتوقع. أحسن مكان ليه كمبيوتر الكاشير / شاشة تانية؛ اضغط **تفعيل الصوت** مرة واحدة عشان التنبيه يشتغل. | **داشبورد المطعم.** بورد حي (جديد / في المطبخ / في الطريق-جاهز) مع صوت تنبيه للطلبات الجديدة، زراير قبول/رفض/تغيير الحالة وكل زرار بيبعت رسالة للعميل، سجل الطلبات، المنيو (زرار "خلص" لكل صنف، وتعديل كامل + Excel لصاحب المطعم)، محادثات العملاء مع خانة للرد، والإعدادات (المواعيد، مناطق التوصيل، الرسوم، الدفع). | https://ordering-demo-three.vercel.app/dashboard |
+
+### لينا (فريق المنصة)
+
+| مين بيستخدمه | هو إيه | الرابط |
+| --- | --- | --- |
+| أصحاب المنصة بس (`admin`). | **لوحة الإدارة.** إضافة مطاعم (مع إمكانية نسخ منيو مطعم تاني)، تغيير الحالة (تجربة / شغال / موقوف / مؤرشف)، إضافة حسابات صاحب المطعم والموظفين، تغيير كلمات السر، الدخول على داشبورد أي مطعم، مسح طلبات الديمو، تصدير كل البيانات، والمسح النهائي (للمؤرشف بس). | https://ordering-demo-three.vercel.app/admin |
+| المطورين / أدوات المراقبة. | فحص إن الموقع شغال، بيرجع `{"ok":true}`. | https://ordering-demo-three.vercel.app/api/health |
+| المطورين. | مشروع Vercel: النشر، الـ logs، ومتغيرات البيئة. | https://vercel.com/ammars-projects-79cd5d73/ordering-demo |
+| المطورين. | مشروع Supabase `ordering-demo`: قاعدة البيانات Postgres. | https://supabase.com/dashboard/project/xzudsfgwwcqahwfulifr |
+
+### الحسابات على الموقع الحي
+
+| يقدر يعمل إيه | الدور | اسم المستخدم |
+| --- | --- | --- |
+| كل حاجة، على كل المطاعم. | مدير المنصة | `admin` |
+| داشبورد Dash، المنيو، الأسعار، الإعدادات، المناطق. | صاحب Dash | `dash` |
+| شغل الطلبات اليومي وتوافر الأصناف. | موظف Dash | `dash.staff` |
+
+كلمات السر **مش** متخزنة في الريبو ده ولا في أي مكان كنص عادي؛ أصحابها هما اللي كتبوها. لو حد نسي كلمة السر تتغير من `/admin` ← **إدارة** ← **تغيير كلمة السر**.
+
+### سيناريو الديمو (5 دقايق)
+
+1. على اللابتوب: ادخل بحساب `dash`، افتح الداشبورد، واضغط **تفعيل الصوت**.
+2. على موبايل الكلاينت: افتح رابط الشات (أو اعمل scan للـ QR).
+3. الكلاينت يطلب ← الطلب يظهر على الداشبورد مع صوت ← اضغط **قبول** ← رسالة القبول تظهر في شات الكلاينت ← **ابدأ التحضير** ← **خرج للتوصيل** / **جاهز للاستلام** ← **تم التسليم**.
+4. وريه تبويب المنيو: علّم على صنف إنه خلص، وهيختفي من البوت فورًا.
+5. بعد الميتنج: `/admin` ← Dash ← **مسح طلبات الديمو** لمسح الطلبات التجريبية.
+
+قبل أي ميتنج، افتح الموقع مرة لو مكانش حد استخدمه بقاله أسبوع (Supabase المجاني بيوقف المشاريع اللي مش مستخدمة).
+
+## إزاي بيشتغل
+
+```
+backend/app/
+  engine/        محرك المحادثة، أنواع الرسايل بحدود واتساب، النصوص العربي
+  channels/      قنوات الإرسال: web (دلوقتي) و whatsapp (هيكل جاهز)
+  services/      التسعير، الطلبات، المنيو، الإعدادات، المواعيد، الإشعارات، Excel، المطاعم
+  routers/       auth, setup, public, chat, dashboard, admin
+backend/alembic/ تعديلات قاعدة البيانات (migrations)
+backend/seeds/dash.py  منيو Dash التجريبي (+ حسابات التطوير اللوكال)
+backend/tests/   اختبارات pytest على Postgres حقيقي
+web/             الواجهات: React + Vite + Tailwind (عربي RTL)
+api/index.py     مدخل Vercel للـ API          vercel.json  إعدادات Vercel
+```
+
+- **أكتر من مطعم (multi-tenant):** كل جدول تابع لمطعم فيه `restaurant_id`، وكل استعلام في الداشبورد متقيد بمطعم المستخدم (أي id تبع مطعم تاني بيرجع 404). "شيل مطعم" معناها إيقاف أو أرشفة؛ المسح النهائي محتاج أرشفة الأول + كتابة الـ slug للتأكيد.
+- **الأسعار بتتحسب على السيرفر بس:** السلة فيها ids وكميات بس، والإجمالي بيتحسب تاني من قاعدة البيانات عند التأكيد. الصنف اللي يخلص بيتشال من السلة مع رسالة توضيح.
+- **جاهز لواتساب:** كل رسالة من البوت بتتراجع على حدود واتساب (3 زراير، 10 صفوف في اللستة، طول العناوين) قبل ما تتحفظ.
+- **مناسب للـ serverless:** حالة المحادثة والقفل لكل عميل في Postgres (صف في `conversations` + `SELECT … FOR UPDATE`)، مفيش worker، والداشبورد والشات بيعملوا polling كل 2–3 ثواني بدل SSE.
+
+## هيكل قاعدة البيانات
+
+PostgreSQL، والتعديلات بتتم بـ Alembic (`backend/alembic/versions/`). المرجع الأساسي هو `backend/app/models.py`. أسماء الجداول والأعمدة بالإنجليزي زي ما هي في الكود. القواعد العامة: كل جدول تابع لمطعم فيه `restaurant_id` (مسح المطعم بيمسح كل بياناته)؛ الفلوس `NUMERIC`؛ الأوقات `timestamptz`؛ الأعمدة اللي بتنتهي بـ `_ar` نص عربي بيظهر للعملاء. الـ Row-level security شغال على كل الجداول (مقفول تمامًا قدام الـ API العام بتاع Supabase، والتطبيق بيتصل بصلاحية صاحب الجداول).
+
+### المطاعم والحسابات والمنيو
+
+```mermaid
+erDiagram
+    restaurants |o--o{ users : "owner / staff (super admin has none)"
+    restaurants ||--o{ settings : "configured by"
+    restaurants ||--o{ categories : has
+    restaurants ||--o{ addons : has
+    restaurants ||--o{ delivery_zones : has
+    categories ||--o{ items : contains
+    items ||--|{ item_variants : "priced by (1 or more)"
+    categories ||--o{ category_addons : allows
+    addons ||--o{ category_addons : "offered in"
+
+    restaurants {
+        int id PK
+        string slug UK "URL name, e.g. dash"
+        text name_ar
+        string status "trial | active | suspended | archived"
+        bool demo_mode "new orders get is_demo"
+        string timezone "Africa/Cairo"
+        timestamptz created_at
+    }
+    users {
+        int id PK
+        int restaurant_id FK "NULL only for super_admin"
+        string username UK
+        text display_name
+        text password_hash "argon2"
+        string role "super_admin | owner | staff"
+        bool active
+        timestamptz created_at
+    }
+    settings {
+        int restaurant_id PK, FK
+        string key PK
+        jsonb value
+    }
+    categories {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        int sort
+        bool active "hidden from customers when false"
+    }
+    items {
+        int id PK
+        int restaurant_id FK
+        int category_id FK
+        text name_ar
+        text description_ar
+        text image_url
+        bool available "sold-out switch"
+        int sort
+    }
+    item_variants {
+        int id PK
+        int item_id FK
+        text name_ar "e.g. single / double; NULL = one price"
+        numeric price "CHECK >= 0"
+        bool available
+        int sort
+    }
+    addons {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        numeric price "CHECK >= 0"
+        bool available
+        int sort
+    }
+    category_addons {
+        int category_id PK, FK
+        int addon_id PK, FK
+        numeric price_override "NULL = addon price"
+    }
+    delivery_zones {
+        int id PK
+        int restaurant_id FK
+        text name_ar
+        numeric fee
+        numeric min_order "0 = use the restaurant setting"
+        bool active
+        int sort
+    }
+```
+
+### العملاء والمحادثات والطلبات
+
+```mermaid
+erDiagram
+    restaurants ||--o{ customers : has
+    restaurants ||--o{ conversations : has
+    restaurants ||--o{ orders : receives
+    restaurants ||--o{ order_counters : numbers
+    customers |o--o{ conversations : chats
+    conversations ||--o{ messages : contains
+    customers ||--o{ orders : places
+    conversations |o--o{ orders : "placed from (chat orders)"
+    delivery_zones |o--o{ orders : "delivered to"
+    delivery_zones |o--o{ customers : "last used zone"
+    orders ||--|{ order_items : contains
+    order_items ||--o{ order_item_addons : with
+    orders ||--|{ order_status_events : "status history"
+
+    customers {
+        int id PK
+        int restaurant_id FK
+        string phone "UNIQUE per restaurant, e.g. 201012345678"
+        text name
+        text last_address
+        int last_zone_id FK
+        timestamptz created_at
+    }
+    conversations {
+        bigint id PK
+        int restaurant_id FK
+        string channel "web_chat | web_menu | whatsapp"
+        string customer_key "web session id, later WhatsApp phone"
+        int customer_id FK
+        string state "engine state, e.g. MAIN_MENU, CART"
+        jsonb data "cart and checkout progress"
+        timestamptz human_requested_at "set = staff alert"
+        timestamptz human_until "bot silent until"
+        timestamptz last_message_at
+        timestamptz created_at
+    }
+    messages {
+        bigint id PK
+        bigint conversation_id FK
+        int restaurant_id FK
+        string direction "in | out"
+        string sender "customer | bot | staff"
+        jsonb payload "text, buttons, list or reply"
+        string wa_message_id UK "dedupes WhatsApp retries"
+        timestamptz created_at
+    }
+    orders {
+        bigint id PK
+        int restaurant_id FK
+        int order_no "daily number, UNIQUE per restaurant and day"
+        date business_day "day starts at 05:00"
+        string public_token UK "tracking link"
+        int customer_id FK
+        bigint conversation_id FK
+        string channel "web_chat | web_menu | whatsapp"
+        string fulfillment "delivery | pickup"
+        int zone_id FK
+        text zone_name_snapshot
+        text address_text
+        numeric subtotal
+        numeric delivery_fee
+        numeric total
+        string payment_method "cod | wallet"
+        string payment_status "unpaid | proof_received | paid"
+        string status "see lifecycle below"
+        text reject_reason
+        text notes
+        int eta_minutes
+        bool is_demo
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    order_items {
+        bigint id PK
+        bigint order_id FK
+        int item_id "reference only, no FK"
+        int variant_id "reference only, no FK"
+        int half_item_id "reserved for half-and-half"
+        text name_snapshot
+        text variant_snapshot
+        numeric unit_price
+        int qty "CHECK > 0"
+        numeric line_total
+        text note
+    }
+    order_item_addons {
+        bigint id PK
+        bigint order_item_id FK
+        int addon_id "reference only, no FK"
+        text name_snapshot
+        numeric price
+    }
+    order_status_events {
+        bigint id PK
+        bigint order_id FK
+        string status
+        text actor "e.g. customer, staff:dash.staff"
+        timestamptz created_at
+    }
+    order_counters {
+        int restaurant_id PK, FK
+        date day PK
+        int last_no "atomic upsert gives the next order_no"
+    }
+```
+
+### قواعد مهمة
+
+- **نسخة من الطلب وقت الطلب (snapshots):** سطور الطلب بتاخد نسخة من اسم الصنف والحجم والأسعار والإضافات وقت الطلب، و`order_items.item_id` / `variant_id` أرقام عادية من غير foreign key. تعديل أو مسح المنيو عمره ما بيغير الطلبات القديمة.
+- **اللي بيحصل عند المسح:** مسح مطعم بيمسح كل حاجة تبعه. مسح منطقة توصيل بيخلي `orders.zone_id` و`customers.last_zone_id` فاضيين (NULL)، واسم المنطقة بيفضل محفوظ في `zone_name_snapshot`. مسح محادثة مش بيمسح طلباتها (`conversation_id` بيبقى NULL).
+- **قيم مينفعش تتكرر:** `restaurants.slug`، `users.username`، `customers (restaurant_id, phone)`، `conversations (restaurant_id, channel, customer_key)`، `orders (restaurant_id, business_day, order_no)`، `orders.public_token`، `messages.wa_message_id`.
+- **رسالة واحدة في المرة لكل عميل:** المحرك بيقفل صف `conversations` (`SELECT … FOR UPDATE`) وهو بيعالج الرسالة.
+- **أرقام الطلبات:** `order_counters` بيزيد بعملية واحدة ذرية (`INSERT … ON CONFLICT DO UPDATE … RETURNING`)، فطلبين في نفس اللحظة عمرهم ما ياخدوا نفس الرقم.
+
+### دورة حياة الطلب
+
+متطبقة في `backend/app/services/orders.py`؛ أي انتقال غير اللي في الرسمة بيرجع HTTP 409.
+
+```mermaid
+stateDiagram-v2
+    [*] --> placed
+    placed --> accepted
+    placed --> rejected : with a reason
+    placed --> cancelled
+    accepted --> preparing
+    accepted --> cancelled
+    preparing --> out_for_delivery : delivery orders
+    preparing --> ready_for_pickup : pickup orders
+    out_for_delivery --> completed
+    ready_for_pickup --> completed
+    completed --> [*]
+    rejected --> [*]
+    cancelled --> [*]
+```
+
+العميل بتوصله رسالة في الشات عند `accepted` (مع الوقت المتوقع)، و`out_for_delivery`، و`ready_for_pickup`، و`rejected` (مع السبب)، و`cancelled`. حالة `completed` بتعلّم الطلبات الكاش إنها اتدفعت.
+
+### مفاتيح `settings` (صف لكل مفتاح لكل مطعم)
+
+| المعنى | مثال | المفتاح |
+| --- | --- | --- |
+| زرار مفتوح/مقفول في الداشبورد | `true` | `accepting_orders` |
+| فترات العمل لكل يوم؛ لو ميعاد القفل قبل ميعاد الفتح يبقى بعد نص الليل | `{"sat": [["12:00","02:00"]], …}` | `working_hours` |
+| الوقت المتوقع اللي بيتبعت للعملاء | `35` | `eta_minutes` |
+| التوصيل والاستلام متاحين ولا لأ | `true` | `delivery_enabled` / `pickup_enabled` |
+| رسوم توصيل ثابتة، بتتستخدم بس لو مفيش مناطق توصيل مفعلة | `20` | `delivery_fee` |
+| الحد الأدنى للتوصيل (الحد الأدنى الخاص بالمنطقة له الأولوية) | `0` | `min_order` |
+| `cod` (كاش) و/أو `wallet` (محفظة) | `["cod"]` | `payment_methods` |
+| رقم المحفظة اللي بيظهر للعميل لو اختار محفظة | `""` | `wallet_number` |
+| الطلبات قبل الساعة دي بتتحسب على اليوم اللي قبله | `"05:00"` | `business_day_starts` |
+| تليفون المطعم | `""` | `contact_phone` |
+
+أي مفتاح مش موجود بياخد القيمة الافتراضية من `backend/app/services/settings.py`.
+
+### أعمدة JSON
+
+- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…الصنف اللي بيتعمل…}, "fulfillment", "zone_id", "address", "payment", "page", "fails", "last_order_id"}`. السلة فيها ids بس؛ الأسعار دايمًا بتتحسب من جداول المنيو.
+- `messages.payload`: الرسايل الطالعة `{"type": "text" | "buttons" | "list", …}` بنفس شكل رسايل واتساب التفاعلية (وبتتراجع على حدود واتساب قبل الحفظ)؛ الرسايل الداخلة `{"type": "text", "text"}` أو `{"type": "button_reply" | "list_reply", "id", "title"}`.
+
+### جداول النظام
+
+| الغرض | الجدول |
+| --- | --- |
+| عدادات لقفل الدخول بعد المحاولات الغلط وحدود الاستخدام العامة (بدل Redis) | `rate_hits (id, bucket, created_at)` |
+| أسرار بتتولد جوه قاعدة البيانات، زي مفتاح توقيع الجلسات | `platform_secrets (key, value)` |
+| آخر تعديل اتطبق على قاعدة البيانات | `alembic_version` |
+
+## التشغيل على جهازك
+
+محتاج Python 3.12+، و Node 20+، و PostgreSQL 16+.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+npm --prefix web install
+cp backend/.env.example backend/.env
+```
+
+Postgres (الريبو ده بيستخدم قاعدة بيانات لوكال على البورت 54329):
+
+```bash
+LC_ALL=en_US.UTF-8 pg_ctl -D .pgdata -o "-p 54329 -k /tmp" -l .pgdata/server.log start
+createdb -h localhost -p 54329 -U postgres ordering
+createdb -h localhost -p 54329 -U postgres ordering_test
+```
+
+إنشاء الجداول والبيانات التجريبية، وبعدين شغّل الـ API والواجهة (في تيرمينالين):
+
+```bash
+cd backend && ../.venv/bin/alembic upgrade head && ../.venv/bin/python -m seeds.dash && cd ..
+.venv/bin/python -m uvicorn app.main:app --app-dir backend --port 8000 --reload
+npm --prefix web run dev
+```
+
+الواجهة بتفتح على http://localhost:5173 (وبتحول `/api` للبورت 8000). حسابات الدخول للتطوير اللوكال مكتوبة في `backend/.env.example` (موجودة في قاعدة بياناتك اللوكال بس).
+
+## الاختبارات
+
+```bash
+cd backend && ../.venv/bin/python -m pytest -q
+```
+
+بتشتغل على قاعدة `ordering_test` (بتتمسح وتتبني من الأول كل مرة). بتغطي: طلبات كاملة من الشات، مناطق التوصيل والحد الأدنى، المطعم المقفول، صنف يخلص قبل التأكيد، محاولة التلاعب بالأسعار، الانتقالات الغلط بين حالات الطلب (409)، رسايل العميل، التحويل لموظف، عزل المطاعم عن بعض، الصلاحيات، CSRF، قفل الدخول، دورة حياة المطعم في لوحة الإدارة، الإعداد لأول مرة، استيراد وتصدير Excel، واختبار إن كل رسالة من البوت جوه حدود واتساب.
+
+## النشر (Vercel + Supabase)
+
+مشروع Vercel متوصل بالريبو ده على GitHub:
+
+- **أي push على `main`** ← نشر تلقائي على https://ordering-demo-three.vercel.app
+- **أي push على فرع تاني أو pull request** ← بناء تجريبي (preview) له رابط خاص. النسخ التجريبية **مفيهاش قاعدة بيانات** (اتصال Supabase متظبط للـ Production بس)، فهي بتأكد إن البناء سليم بس؛ جرّب الميزات الجديدة على جهازك.
+- نشر يدوي من فولدر المشروع لو احتجته: `vercel deploy --prod --scope ammars-projects-79cd5d73`
+
+تعديلات قاعدة البيانات: اعمل migration جديدة بـ Alembic، وبعدين طبّقها على Supabase (الأمر `cd backend && ../.venv/bin/alembic upgrade <current>:head --sql` بيطلع الـ SQL).
+
+الإعداد الحالي: مشروع Supabase اسمه `ordering-demo` (eu-central-1) + مشروع Vercel اسمه `ordering-demo` (الـ functions في `fra1`). مفيش أي سر بيتكتب أو يتنسخ باليد:
+
+- **مفتاح توقيع الجلسات** بيتولد جوه قاعدة البيانات بـ migration (`platform_secrets`)؛ `JWT_SECRET` اختياري.
+- **رابط قاعدة البيانات** جاي من ربط Supabase مع Vercel (`POSTGRES_URL`، الـ transaction pooler). أي parameters غريبة في الرابط بتتشال، والـ pooling بيتقفل لوحده على Vercel.
+- **أول حساب إدارة** بيتعمل على الموقع الحي: صفحة `/login` بتعرض فورم إعداد لمرة واحدة طالما مفيش مدير منصة. بعدها حسابات أصحاب المطاعم والموظفين بتتضاف من `/admin`.
+- **RLS** شغال على كل الجداول، فالـ REST API العام بتاع Supabase مش بيقدر يقرا بيانات التطبيق؛ التطبيق بيتصل بصلاحية صاحب الجداول.
+
+بيئة جديدة من الصفر:
+
+1. اعمل مشروع Supabase وطبّق الجداول (`alembic upgrade head --sql`، أو `alembic upgrade head` برابط `DATABASE_URL` مباشر).
+2. ضيف المطاعم والمنيو من غير حسابات: `SEED_SKIP_USERS=1 ENVIRONMENT=production python -m seeds.dash` (أو ارفع المنيو بـ Excel بعدين).
+3. اعمل مشروع Vercel واربطه (`vercel project add …` و `vercel link`)، حط `ENVIRONMENT=production`، وبعدين من Supabase ← Integrations ← Vercel اربط المشروع عشان `POSTGRES_URL` يتنقل لوحده.
+4. `vercel deploy --prod`، وافتح `/login` واعمل حساب الإدارة فورًا.
+5. اختبار سريع: الشات على موبايل، الداشبورد على لابتوب، اطلب، اقبل الطلب، وشوف الشات بيتحدث.
+
+ملاحظات: خطة Vercel المجانية (Hobby) للاستخدام غير التجاري؛ أول ما مطعم يدفع انقلوا لـ Pro (أو شغلوا نفس التطبيق على VPS بـ uvicorn). مشاريع Supabase المجانية بتقف لوحدها بعد أسبوع من غير استخدام.
+
+## الخطوات الجاية (بعد الديمو)
+
+قناة واتساب (ربط `phone_number_id` بالمطعم، التحقق من التوقيع، منع تكرار الرسايل بـ `messages.wa_message_id`، والقوالب بعد 24 ساعة)، روابط دعوة عشان أصحاب المطاعم يحطوا كلمات السر بنفسهم، الدفع بالمحفظة مع صورة التحويل، طباعة بون المطبخ، الإحصائيات، وباقي خطة المشروع الأصلية.
+
+---
+
+<a id="english"></a>
+
+# Ordering platform (web demo) — English
 
 Multi-restaurant ordering platform. Customers order through a **WhatsApp-style chat** or a **web menu page**; orders land on a live **restaurant dashboard**; we manage every restaurant from a **super-admin panel**. The chat engine already speaks WhatsApp's message types and limits, so connecting the WhatsApp Cloud API later is an adapter (`backend/app/channels/whatsapp.py`), not a rewrite.
 
