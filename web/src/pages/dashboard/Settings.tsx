@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Save, Trash2 } from "lucide-react";
 import { ApiError, del, get, patch, post } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { money } from "../../lib/format";
+import { displayPhone } from "../../lib/format";
+import type { Driver } from "../../lib/types";
 import { Badge, Button, Card, Field, Input, Spinner, Switch, useToast } from "../../components/ui";
 import { ShareLinks } from "../../components/ShareLinks";
 
@@ -27,6 +28,7 @@ type S = {
   payment_methods: string[];
   wallet_number: string;
   contact_phone: string;
+  drivers: Driver[];
 };
 type Zone = { id?: number; name: string; fee: number; min_order: number; active: boolean; sort: number };
 
@@ -163,6 +165,7 @@ export default function SettingsPage() {
       </div>
 
       <Zones zones={zones} setZones={setZones} />
+      <Drivers key={JSON.stringify(s.drivers)} drivers={s.drivers ?? []} onSaved={setS} />
     </div>
   );
 }
@@ -181,7 +184,7 @@ function Section({ title, extra, children }: { title: string; extra?: React.Reac
 
 function Zones({ zones, setZones }: { zones: Zone[]; setZones: (z: Zone[]) => void }) {
   const toast = useToast();
-  const [draft, setDraft] = useState<Zone>({ name: "", fee: 20, min_order: 0, active: true, sort: zones.length });
+  const [draft, setDraft] = useState({ name: "", fee: 20, min_order: 0 });
   const reload = async () => setZones((await get("/dash/zones")).zones);
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     try {
@@ -192,25 +195,44 @@ function Zones({ zones, setZones }: { zones: Zone[]; setZones: (z: Zone[]) => vo
       toast(e instanceof ApiError ? e.message : "حصلت مشكلة", "danger");
     }
   };
+  const move = (i: number, dir: -1 | 1) =>
+    run(async () => {
+      const order = [...zones];
+      [order[i], order[i + dir]] = [order[i + dir], order[i]];
+      await Promise.all(order.map((z, k) => (z.sort !== k ? patch(`/dash/zones/${z.id}`, { ...z, sort: k }) : null)));
+    }, "الترتيب اتحفظ");
+
   return (
     <Section title="مناطق التوصيل">
-      <p className="mb-3 text-xs text-muted">العميل بيختار منطقته من لستة، والرسوم والحد الأدنى بيتحسبوا لوحدهم. لو مفيش مناطق، بتتطبق الرسوم الثابتة.</p>
+      <p className="mb-3 text-xs text-muted">
+        العميل بيختار منطقته من لستة، والرسوم والحد الأدنى بيتحسبوا لوحدهم. عدّل الاسم أو السعر واضغط حفظ؛ التغيير بيظهر في البوت وصفحة المنيو فورًا. لو مفيش مناطق مفعلة، بتتطبق رسوم
+        التوصيل الثابتة.
+      </p>
+      {zones.length ? (
+        <div className="mb-1 hidden grid-cols-[1fr_6rem_6rem_auto] gap-2 px-1 text-xs font-semibold text-muted sm:grid">
+          <span>المنطقة</span>
+          <span>الرسوم</span>
+          <span>حد أدنى</span>
+          <span />
+        </div>
+      ) : null}
       <div className="space-y-2">
-        {zones.map((z) => (
-          <div key={z.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className={`flex-1 font-semibold ${z.active ? "" : "text-muted line-through"}`}>{z.name}</span>
-            <span className="num text-muted">توصيل {money(z.fee)}</span>
-            {z.min_order ? <span className="num text-muted">· حد أدنى {money(z.min_order)}</span> : null}
-            <Switch checked={z.active} label={`${z.name} مفعلة`} onChange={(v) => run(() => patch(`/dash/zones/${z.id}`, { ...z, active: v }), v ? "المنطقة اتفعلت" : "المنطقة اتقفلت")} />
-            <button onClick={() => confirm(`مسح ${z.name}؟`) && run(() => del(`/dash/zones/${z.id}`), "اتمسحت")} className="p-1 text-muted hover:text-danger" aria-label="مسح">
-              <Trash2 className="size-4" />
-            </button>
-          </div>
+        {zones.map((z, i) => (
+          <ZoneRow
+            key={z.id}
+            zone={z}
+            first={i === 0}
+            last={i === zones.length - 1}
+            onSave={(f) => run(() => patch(`/dash/zones/${z.id}`, { ...z, ...f }), "المنطقة اتحفظت ✅")}
+            onToggle={(v) => run(() => patch(`/dash/zones/${z.id}`, { ...z, active: v }), v ? "المنطقة اتفعلت" : "المنطقة اتقفلت")}
+            onDelete={() => confirm(`مسح منطقة ${z.name}؟ الطلبات القديمة هتفضل محفوظة باسم المنطقة.`) && run(() => del(`/dash/zones/${z.id}`), "اتمسحت")}
+            onMove={(dir) => move(i, dir)}
+          />
         ))}
       </div>
       <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-line pt-4">
         <Field label="منطقة جديدة">
-          <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="مثلًا: مدينة نصر" />
+          <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="مثلًا: شرق" />
         </Field>
         <Field label="الرسوم">
           <Input type="number" min={0} value={draft.fee} onChange={(e) => setDraft({ ...draft, fee: Number(e.target.value) })} className="num w-24" />
@@ -222,12 +244,115 @@ function Zones({ zones, setZones }: { zones: Zone[]; setZones: (z: Zone[]) => vo
           disabled={!draft.name.trim()}
           onClick={() =>
             run(async () => {
-              await post("/dash/zones", { ...draft, sort: zones.length });
-              setDraft({ name: "", fee: 20, min_order: 0, active: true, sort: zones.length + 1 });
+              await post("/dash/zones", { ...draft, active: true, sort: zones.length });
+              setDraft({ name: "", fee: 20, min_order: 0 });
             }, "المنطقة اتضافت")
           }
         >
           <Plus className="size-4" /> إضافة
+        </Button>
+      </div>
+    </Section>
+  );
+}
+
+function ZoneRow({
+  zone,
+  first,
+  last,
+  onSave,
+  onToggle,
+  onDelete,
+  onMove,
+}: {
+  zone: Zone;
+  first: boolean;
+  last: boolean;
+  onSave: (f: { name: string; fee: number; min_order: number }) => void;
+  onToggle: (v: boolean) => void;
+  onDelete: () => void;
+  onMove: (dir: -1 | 1) => void;
+}) {
+  const [f, setF] = useState({ name: zone.name, fee: zone.fee, min_order: zone.min_order });
+  useEffect(() => setF({ name: zone.name, fee: zone.fee, min_order: zone.min_order }), [zone.name, zone.fee, zone.min_order]);
+  const dirty = f.name.trim() !== zone.name || f.fee !== zone.fee || f.min_order !== zone.min_order;
+  return (
+    <div className={`grid grid-cols-2 items-center gap-2 rounded-xl border border-line p-2 sm:grid-cols-[1fr_6rem_6rem_auto] sm:border-0 sm:p-1 ${zone.active ? "" : "opacity-60"}`}>
+      <Input aria-label="اسم المنطقة" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className="col-span-2 sm:col-span-1" />
+      <label className="block">
+        <span className="mb-0.5 block text-[11px] text-muted sm:hidden">الرسوم</span>
+        <Input aria-label="الرسوم" type="number" min={0} value={f.fee} onChange={(e) => setF({ ...f, fee: Number(e.target.value) })} className="num" />
+      </label>
+      <label className="block">
+        <span className="mb-0.5 block text-[11px] text-muted sm:hidden">حد أدنى</span>
+        <Input aria-label="الحد الأدنى" type="number" min={0} value={f.min_order} onChange={(e) => setF({ ...f, min_order: Number(e.target.value) })} className="num" />
+      </label>
+      <div className="col-span-2 flex items-center gap-1 sm:col-span-1">
+        <Button size="sm" tone={dirty ? "primary" : "ghost"} disabled={!dirty || !f.name.trim()} onClick={() => onSave({ ...f, name: f.name.trim() })}>
+          <Save className="size-4" /> حفظ
+        </Button>
+        <Switch checked={zone.active} label={`${zone.name} مفعلة`} onChange={onToggle} />
+        <button onClick={() => onMove(-1)} disabled={first} className="p-1 text-muted hover:text-fg disabled:opacity-30" aria-label="لفوق">
+          <ArrowUp className="size-4" />
+        </button>
+        <button onClick={() => onMove(1)} disabled={last} className="p-1 text-muted hover:text-fg disabled:opacity-30" aria-label="لتحت">
+          <ArrowDown className="size-4" />
+        </button>
+        <button onClick={onDelete} className="p-1 text-muted hover:text-danger" aria-label="مسح">
+          <Trash2 className="size-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Drivers({ drivers, onSaved }: { drivers: Driver[]; onSaved: (settings: S) => void }) {
+  const toast = useToast();
+  const [list, setList] = useState(drivers.map((d) => ({ name: d.name, phone: displayPhone(d.phone) })));
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await patch("/dash/settings", { drivers: list.filter((d) => d.name.trim() || d.phone.trim()) });
+      onSaved(r.settings);
+      setList(r.settings.drivers.map((d: Driver) => ({ name: d.name, phone: displayPhone(d.phone) })));
+      toast("الدليفري اتحفظوا ✅");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "حصلت مشكلة", "danger");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Section title="الدليفري">
+      <p className="mb-3 text-xs text-muted">
+        سجّل أسامي وأرقام الدليفري. على كل طلب توصيل هيظهر زرار باسم كل واحد: بيفتح شات واتساب معاه والطلب والعنوان ولينك الموقع جاهزين، وبيسجل الطلب عليه.
+      </p>
+      <div className="space-y-2">
+        {list.map((d, i) => (
+          <div key={i} className="flex flex-wrap items-center gap-2">
+            <Input aria-label="اسم الدليفري" placeholder="الاسم" value={d.name} onChange={(e) => setList(list.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} className="max-w-48" />
+            <Input
+              aria-label="موبايل الدليفري"
+              placeholder="01xxxxxxxxx"
+              dir="ltr"
+              inputMode="tel"
+              value={d.phone}
+              onChange={(e) => setList(list.map((x, k) => (k === i ? { ...x, phone: e.target.value } : x)))}
+              className="num max-w-44 text-right"
+            />
+            <button onClick={() => setList(list.filter((_, k) => k !== i))} className="p-1 text-muted hover:text-danger" aria-label="شيل الدليفري">
+              <Trash2 className="size-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex gap-2">
+        <Button size="sm" tone="ghost" onClick={() => setList([...list, { name: "", phone: "" }])} disabled={list.length >= 20}>
+          <Plus className="size-4" /> دليفري جديد
+        </Button>
+        <Button size="sm" tone="primary" loading={busy} onClick={save}>
+          <Save className="size-4" /> حفظ الدليفري
         </Button>
       </div>
     </Section>

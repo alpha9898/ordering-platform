@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Bike, MapPin, MessageCircle, Phone, ShoppingBag } from "lucide-react";
+import { Bike, MapPin, MessageCircle, Navigation, Phone, ShoppingBag } from "lucide-react";
 import { ApiError, post } from "../../lib/api";
 import { CHANNEL_LABEL, PAYMENT_LABEL, STATUS_LABEL, STATUS_TONE, displayPhone, mapsLink, money, timeAgo, type OrderStatus } from "../../lib/format";
-import type { Order } from "../../lib/types";
+import { mapsPin } from "../../lib/geo";
+import type { Driver, Order } from "../../lib/types";
 import { Badge, Button, Modal, inputCls, useToast } from "../../components/ui";
 
 const REJECT_REASONS = ["الصنف خلص", "خارج منطقة التوصيل", "المطعم زحمة جدًا", "العنوان مش واضح"];
@@ -39,15 +40,39 @@ export default function OrderCard({
   onChanged,
   onOpenChat,
   readOnly,
+  drivers = [],
 }: {
   order: Order;
   now: number;
   onChanged?: (o: Order) => void;
   onOpenChat?: (convId: number) => void;
   readOnly?: boolean;
+  drivers?: Driver[];
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [sending, setSending] = useState<string | null>(null);
+  const canSendDriver = !readOnly && order.fulfillment === "delivery" && ["accepted", "preparing", "out_for_delivery"].includes(order.status);
+
+  // Records the driver, then opens WhatsApp with the order + map pin ready to send.
+  const sendToDriver = async (phone?: string) => {
+    const tab = window.open("about:blank", "_blank"); // open now so popup blockers allow it
+    setSending(phone ?? "share");
+    try {
+      const r = await post(`/dash/orders/${order.id}/driver`, phone ? { phone } : {});
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = r.whatsapp_url;
+      } else window.open(r.whatsapp_url, "_blank");
+      onChanged?.(r.order);
+      toast(phone ? `اتسجل مع ${r.order.driver?.name} · كمّل الإرسال في واتساب` : "اختار الدليفري في واتساب");
+    } catch (e) {
+      tab?.close();
+      toast(e instanceof ApiError ? e.message : "حصلت مشكلة", "danger");
+    } finally {
+      setSending(null);
+    }
+  };
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const isNew = order.status === "placed";
@@ -75,6 +100,7 @@ export default function OrderCard({
         <Badge tone={STATUS_TONE[order.status]}>{STATUS_LABEL[order.status]}</Badge>
         <Badge tone="muted">{CHANNEL_LABEL[order.channel]}</Badge>
         {order.is_demo ? <Badge tone="muted">ديمو</Badge> : null}
+        {order.driver ? <Badge tone="primary">🛵 مع {order.driver.name}</Badge> : null}
         <span className="ms-auto text-xs text-muted" title={new Date(order.created_at).toLocaleString("ar-EG")}>
           {timeAgo(order.created_at, now)}
         </span>
@@ -105,6 +131,16 @@ export default function OrderCard({
                 <a href={mapsLink(order.address)} target="_blank" rel="noreferrer" className="mt-0.5 flex items-start gap-1 text-fg hover:text-primary">
                   <MapPin className="mt-0.5 size-3.5 shrink-0" />
                   <span>{order.address}</span>
+                </a>
+              ) : null}
+              {order.location ? (
+                <a
+                  href={mapsPin(order.location.lat, order.location.lng)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 rounded-lg bg-primary-soft px-2 py-1 text-xs font-semibold text-primary hover:underline"
+                >
+                  <Navigation className="size-3.5" /> الموقع على الخريطة
                 </a>
               ) : null}
             </div>
@@ -143,6 +179,32 @@ export default function OrderCard({
         <span className="num text-lg font-bold">{money(order.total)}</span>
       </div>
       {order.reject_reason ? <p className="mb-2 text-sm text-danger">السبب: {order.reject_reason}</p> : null}
+
+      {canSendDriver ? (
+        <div className="mb-3 rounded-xl border border-line p-2.5">
+          <div className="mb-2 text-xs font-semibold text-muted">ابعت الطلب والموقع للدليفري على واتساب</div>
+          <div className="flex flex-wrap gap-1.5">
+            {drivers.length ? (
+              drivers.map((d) => (
+                <Button
+                  key={d.phone}
+                  size="sm"
+                  tone={order.driver?.phone === d.phone ? "primary" : "neutral"}
+                  loading={sending === d.phone}
+                  disabled={!!sending}
+                  onClick={() => sendToDriver(d.phone)}
+                >
+                  🛵 {d.name}
+                </Button>
+              ))
+            ) : (
+              <Button size="sm" loading={sending === "share"} onClick={() => sendToDriver()}>
+                🛵 ابعت للدليفري
+              </Button>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {!readOnly && actionsFor(order).length ? (
         <div className="flex gap-2">

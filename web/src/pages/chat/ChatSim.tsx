@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ArrowRight, BadgeCheck, CheckCheck, List as ListIcon, RotateCcw, SendHorizontal, Store, X } from "lucide-react";
+import { ArrowRight, BadgeCheck, CheckCheck, List as ListIcon, MapPin, RotateCcw, SendHorizontal, Store, X } from "lucide-react";
 import { ApiError, get, post } from "../../lib/api";
 import { clock } from "../../lib/format";
+import { geoErrorText, getPosition, mapsPin } from "../../lib/geo";
 import { useLocalStorage, usePoll } from "../../lib/hooks";
-import { Button, Spinner } from "../../components/ui";
+import { Button, Spinner, useToast } from "../../components/ui";
 
 type Btn = { id: string; title: string };
 type Row = { id: string; title: string; description?: string | null };
@@ -12,6 +13,8 @@ type Payload =
   | { type: "text"; body?: string; text?: string }
   | { type: "buttons"; body: string; buttons: Btn[]; header?: string | null; footer?: string | null }
   | { type: "list"; body: string; button: string; sections: { title: string; rows: Row[] }[] }
+  | { type: "location_request"; body: string }
+  | { type: "location"; latitude: number; longitude: number }
   | { type: "button_reply" | "list_reply"; id: string; title: string };
 type Msg = { id: number; direction: "in" | "out"; sender: string; payload: Payload; created_at: string | null; pending?: boolean };
 type Session = { session_id: string; name: string; phone: string };
@@ -191,25 +194,48 @@ function Conversation({ slug, name, session, onSession }: { slug: string; name: 
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [msgs.length, typing]);
 
-  const send = async (kind: "text" | "button" | "list", title: string, id?: string) => {
+  const toast = useToast();
+  const [locating, setLocating] = useState(false);
+
+  const send = async (kind: "text" | "button" | "list" | "location", title: string, id?: string, coords?: { lat: number; lng: number }) => {
+    const payload: Payload =
+      kind === "text"
+        ? { type: "text", text: title }
+        : kind === "location"
+          ? { type: "location", latitude: coords!.lat, longitude: coords!.lng }
+          : { type: kind === "button" ? "button_reply" : "list_reply", id: id!, title };
     const temp: Msg = {
       id: Number.MAX_SAFE_INTEGER - msgs.length,
       direction: "in",
       sender: "customer",
-      payload: kind === "text" ? { type: "text", text: title } : { type: kind === "button" ? "button_reply" : "list_reply", id: id!, title },
+      payload,
       created_at: new Date().toISOString(),
       pending: true,
     };
     setMsgs((m) => [...m, temp]);
     setTyping(true);
     try {
-      const r = await post(`/chat/${slug}/send`, { session_id: session.session_id, kind, text: title, id });
+      const r = await post(`/chat/${slug}/send`, { session_id: session.session_id, kind, text: title, id, lat: coords?.lat, lng: coords?.lng });
       merge(r.messages);
     } catch (e) {
       setMsgs((m) => m.filter((x) => x !== temp));
       alert(e instanceof ApiError ? e.message : "الرسالة موصلتش");
     } finally {
       setTyping(false);
+    }
+  };
+
+  // like WhatsApp's "send location": uses the phone's GPS (browser asks permission)
+  const shareLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const c = await getPosition();
+      await send("location", "", undefined, c);
+    } catch (e) {
+      toast(geoErrorText(e), "danger");
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -238,7 +264,7 @@ function Conversation({ slug, name, session, onSession }: { slug: string; name: 
         ) : null}
         <div className="flex flex-col gap-1.5">
           {msgs.map((m) => (
-            <Bubble key={m.id} m={m} onReply={send} onOpenList={setSheet} />
+            <Bubble key={m.id} m={m} onReply={send} onOpenList={setSheet} onShareLocation={shareLocation} locating={locating} />
           ))}
           {typing ? (
             <div className="w-fit rounded-lg rounded-tr-none bg-white px-3 py-2 shadow-sm dark:bg-[#202c33]">
@@ -253,6 +279,16 @@ function Conversation({ slug, name, session, onSession }: { slug: string; name: 
         <div ref={bottom} />
       </div>
       <form onSubmit={submit} className="flex items-center gap-2 bg-[#f0f2f5] px-2 py-2 dark:bg-[#1f2c34]">
+        <button
+          type="button"
+          onClick={shareLocation}
+          disabled={locating}
+          aria-label="إرسال الموقع"
+          title="إرسال الموقع"
+          className="grid size-10 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-black/5 disabled:opacity-50 dark:text-[#8696a0] dark:hover:bg-white/5"
+        >
+          {locating ? <Spinner small /> : <MapPin className="size-5" />}
+        </button>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -278,7 +314,19 @@ function Conversation({ slug, name, session, onSession }: { slug: string; name: 
   );
 }
 
-function Bubble({ m, onReply, onOpenList }: { m: Msg; onReply: (k: "button", title: string, id: string) => void; onOpenList: (l: any) => void }) {
+function Bubble({
+  m,
+  onReply,
+  onOpenList,
+  onShareLocation,
+  locating,
+}: {
+  m: Msg;
+  onReply: (k: "button", title: string, id: string) => void;
+  onOpenList: (l: any) => void;
+  onShareLocation: () => void;
+  locating: boolean;
+}) {
   const mine = m.direction === "in";
   const p = m.payload;
   const base = "relative max-w-[85%] rounded-lg px-2.5 pb-1.5 pt-1.5 text-[14.5px] leading-relaxed shadow-sm";
@@ -288,6 +336,24 @@ function Bubble({ m, onReply, onOpenList }: { m: Msg; onReply: (k: "button", tit
       {mine ? <CheckCheck className={`size-3.5 ${m.pending ? "text-[#8696a0]" : "text-[#53bdeb]"}`} /> : null}
     </span>
   );
+  if (mine && p.type === "location") {
+    return (
+      <div className={`${base} fade-in self-end rounded-tl-none bg-[#d9fdd3] p-1 text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]`}>
+        <a href={mapsPin(p.latitude, p.longitude)} target="_blank" rel="noreferrer" className="flex w-56 items-center gap-3 rounded-md bg-white/70 p-3 dark:bg-black/20">
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#e53935] text-white">
+            <MapPin className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold">موقعي</span>
+            <span className="block truncate text-xs opacity-70" dir="ltr">
+              {p.latitude.toFixed(5)}, {p.longitude.toFixed(5)}
+            </span>
+          </span>
+        </a>
+        <div className="px-1.5">{time}</div>
+      </div>
+    );
+  }
   if (mine) {
     const label = p.type === "text" ? p.text : "title" in p ? p.title : "";
     return (
@@ -317,6 +383,15 @@ function Bubble({ m, onReply, onOpenList }: { m: Msg; onReply: (k: "button", tit
             </button>
           ))}
         </div>
+      ) : null}
+      {p.type === "location_request" ? (
+        <button
+          onClick={onShareLocation}
+          disabled={locating}
+          className="flex items-center justify-center gap-2 rounded-b-lg border-t border-[#e9edef] bg-white py-2.5 text-[14.5px] font-medium text-[#00a5f4] hover:bg-[#f5f6f6] disabled:opacity-60 dark:border-[#2a3942] dark:bg-[#202c33] dark:text-[#53bdeb]"
+        >
+          {locating ? <Spinner small /> : <MapPin className="size-4" />} إرسال الموقع
+        </button>
       ) : null}
       {p.type === "list" ? (
         <button

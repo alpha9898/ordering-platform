@@ -158,6 +158,8 @@ class Customer(Base):
     name: Mapped[str | None] = mapped_column(Text)
     last_address: Mapped[str | None] = mapped_column(Text)
     last_zone_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_zones.id", ondelete="SET NULL"))
+    last_lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    last_lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     created_at: Mapped[dt.datetime] = _now_col()
 
 
@@ -238,6 +240,8 @@ class Order(Base):
     zone_id: Mapped[int | None] = mapped_column(ForeignKey("delivery_zones.id", ondelete="SET NULL"))
     zone_name_snapshot: Mapped[str | None] = mapped_column(Text)
     address_text: Mapped[str | None] = mapped_column(Text)
+    lat: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))  # customer's shared location
+    lng: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     delivery_fee: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
@@ -247,6 +251,9 @@ class Order(Base):
     reject_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     eta_minutes: Mapped[int | None] = mapped_column(Integer)
+    driver_name: Mapped[str | None] = mapped_column(Text)  # last driver the order was sent to
+    driver_phone: Mapped[str | None] = mapped_column(String(32))
+    driver_sent_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[dt.datetime] = _now_col()
     updated_at: Mapped[dt.datetime] = mapped_column(

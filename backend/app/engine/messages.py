@@ -120,7 +120,26 @@ class List:
         _check(self.footer is None or len(self.footer) <= MAX_FOOTER, "footer length")
 
 
-Outgoing = Text | Buttons | List
+@dataclass
+class LocationRequest:
+    """WhatsApp interactive `location_request_message`: a body plus a
+    "Send location" button that shares the customer's pin."""
+
+    body: str
+    type: str = field(default="location_request", init=False)
+
+    def __post_init__(self):
+        _check(0 < len(self.body) <= MAX_BODY, "location request body length")
+
+
+Outgoing = Text | Buttons | List | LocationRequest
+
+
+def valid_coords(lat: float | None, lng: float | None) -> bool:
+    try:
+        return lat is not None and lng is not None and -90 <= float(lat) <= 90 and -180 <= float(lng) <= 180
+    except (TypeError, ValueError):
+        return False
 
 
 def to_payload(msg: Outgoing) -> dict:
@@ -147,6 +166,8 @@ def validate_payload(payload: dict) -> Outgoing:
             header=payload.get("header"),
             footer=payload.get("footer"),
         )
+    if kind == "location_request":
+        return LocationRequest(body=payload["body"])
     raise LimitError(f"unknown message type {kind}")
 
 
@@ -154,11 +175,15 @@ def validate_payload(payload: dict) -> Outgoing:
 class Inbound:
     """Normalized inbound message (same shape for web and WhatsApp)."""
 
-    kind: str  # text | button | list
+    kind: str  # text | button | list | location
     text: str = ""
     id: str | None = None  # reply id for button/list
+    lat: float | None = None  # location messages
+    lng: float | None = None
 
     def to_payload(self) -> dict:
         if self.kind == "text":
             return {"type": "text", "text": self.text}
+        if self.kind == "location":
+            return {"type": "location", "latitude": self.lat, "longitude": self.lng}
         return {"type": f"{self.kind}_reply", "id": self.id, "title": self.text}

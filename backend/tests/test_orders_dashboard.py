@@ -91,7 +91,7 @@ def test_web_menu_delivery_requires_zone_and_address(client):
     r = client.post("/api/public/r/dash/orders", json={**base, "zone_id": menu["zones"][0]["id"]})
     assert r.json()["detail"]["code"] == "address_required"
     r = client.post("/api/public/r/dash/orders", json={**base, "zone_id": menu["zones"][0]["id"], "address": "شارع 9 المعادي"})
-    assert r.status_code == 200 and r.json()["total"] == 95 + 15
+    assert r.status_code == 200 and r.json()["total"] == 95 + 20
 
 
 def test_human_handoff_silences_bot_and_staff_can_reply(chat: Chat, staff):

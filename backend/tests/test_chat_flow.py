@@ -23,14 +23,14 @@ def test_greeting_shows_categories_and_human(chat: Chat):
 def test_full_delivery_order(chat: Chat, owner, db):
     order_zinger_delivery(chat)
     assert "📋 ملخص طلبك" in chat.body
-    assert "الإجمالي: 335 ج" in chat.body  # 2 x (145 + 15) + 15 delivery
+    assert "الإجمالي: 340 ج" in chat.body  # 2 x (145 + 15) + 20 delivery (east)
     chat.tap("confirm:yes")
     assert "رقم الطلب: #1" in chat.body
 
     order = db.scalar(select(Order))
-    assert order.total == Decimal("335") and order.delivery_fee == Decimal("15")
+    assert order.total == Decimal("340") and order.delivery_fee == Decimal("20")
     assert order.channel == "web_chat" and order.is_demo and order.status == "placed"
-    assert order.zone_name_snapshot.startswith("قريب")
+    assert order.zone_name_snapshot == "شرق" and order.lat is None  # typed address, no pin
     assert order.items[0].variant_snapshot == "دبل" and order.items[0].addons[0].name_snapshot == "جبنة شيدر"
 
     board = owner.get("/api/dash/board").json()
@@ -107,7 +107,8 @@ def test_item_sold_out_between_selection_and_confirm(chat: Chat, owner, db):
     assert db.scalar(select(Order)) is None
 
 
-def test_below_zone_min_order_offers_alternatives(chat: Chat):
+def test_below_zone_min_order_offers_alternatives(chat: Chat, owner):
+    assert owner.post("/api/dash/zones", json={"name": "بعيد", "fee": 40, "min_order": 150}).status_code == 200
     chat.text("منيو")
     chat.tap(chat.row_id("مشروبات"))
     chat.tap(chat.row_id("ماكسي كولا"))
@@ -168,6 +169,6 @@ def test_returning_customer_gets_same_address_option(client, db):
     second.tap("qty:3")
     second.tap("cart:checkout")
     second.tap("ful:delivery")
-    second.tap(second.row_id("قريب"))
+    second.tap(second.row_id("شرق"))
     assert "addr:same" in second.ids() and "شارع النيل عمارة 10" in second.body
     assert "📦 حالة طلبي" not in second.body

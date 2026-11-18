@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -11,7 +10,6 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import get_settings
 from ..db import get_db
-from ..engine.texts_ar import normalize
 from ..models import Order, OrderItem, Restaurant
 from ..services import hours, menu, ratelimit
 from ..services import settings as settings_svc
@@ -21,12 +19,8 @@ router = APIRouter(prefix="/public", tags=["public"])
 
 
 def normalize_phone(raw: str) -> str:
-    digits = re.sub(r"\D", "", normalize(raw or "").replace(" ", ""))
-    if digits.startswith("0020"):
-        digits = digits[2:]
-    if digits.startswith("01") and len(digits) == 11:
-        digits = "2" + digits
-    if not 8 <= len(digits) <= 15:
+    digits = settings_svc.normalize_phone(raw)
+    if digits is None:
         raise HTTPException(status_code=422, detail="رقم الموبايل مش صحيح")
     return digits
 
@@ -88,6 +82,8 @@ class OrderIn(BaseModel):
     fulfillment: str
     zone_id: int | None = None
     address: str | None = Field(default=None, max_length=300)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
     payment_method: str = "cod"
     notes: str | None = Field(default=None, max_length=500)
 
@@ -111,6 +107,8 @@ def place_order(slug: str, body: OrderIn, request: Request, db: Session = Depend
             channel="web_menu",
             zone_id=body.zone_id,
             address=body.address,
+            lat=body.lat,
+            lng=body.lng,
             notes=body.notes,
         )
     except OrderError as e:

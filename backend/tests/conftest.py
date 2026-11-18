@@ -121,6 +121,12 @@ class Chat:
         kind = "list" if reply_id.split(":")[0] in {"cat", "item", "addon", "addons", "zone", "line", "cats", "edit", "zones", "status", "menu", "human"} else "button"
         return self._send(kind, title, reply_id)
 
+    def location(self, lat: float, lng: float):
+        r = self.c.post(f"/api/chat/{self.slug}/send", json={"session_id": self.sid, "kind": "location", "lat": lat, "lng": lng})
+        assert r.status_code == 200, r.text
+        self.last = [m["payload"] for m in r.json()["messages"] if m["direction"] == "out"]
+        return self.last
+
     def poll(self, after: int = 0) -> list[dict]:
         r = self.c.get(f"/api/chat/{self.slug}/messages", params={"session_id": self.sid, "after": after})
         return r.json()["messages"]
@@ -159,7 +165,7 @@ def chat(client):
 
 
 def order_zinger_delivery(chat: Chat, address: str = "شارع التحرير عمارة 5 الدور التالت") -> None:
-    """Zinger double + cheddar x2, delivery to zone 'قريب' -> confirm screen."""
+    """Zinger double + cheddar x2, delivery to zone 'شرق', typed address -> confirm screen."""
     chat.text("اهلا")
     chat.tap(chat.row_id("فراخ مقلية"))
     chat.tap(chat.row_id("زنجر"))
@@ -169,7 +175,7 @@ def order_zinger_delivery(chat: Chat, address: str = "شارع التحرير ع
     chat.tap("qty:2")
     chat.tap("cart:checkout")
     chat.tap("ful:delivery")
-    chat.tap(chat.row_id("قريب"))
+    chat.tap(chat.row_id("شرق"))
     if "addr:same" in chat.ids():
         chat.tap("addr:new")
     chat.text(address)

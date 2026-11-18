@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { Bike, Clock, MessageCircle, Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
+import { Bike, Check, Clock, MapPin, MessageCircle, Minus, Plus, ShoppingBag, Trash2, X } from "lucide-react";
 import { ApiError, get, post } from "../../lib/api";
 import { money } from "../../lib/format";
+import { geoErrorText, getPosition, mapsPin, type Coords } from "../../lib/geo";
 import { useLocalStorage } from "../../lib/hooks";
 import { Badge, Button, Field, Input, Modal, Spinner, inputCls } from "../../components/ui";
 
@@ -297,6 +298,19 @@ function Checkout({
   const [zoneId, setZoneId] = useState<number | "">(info.zones[0]?.id ?? "");
   const [pay, setPay] = useState(info.payment_methods[0]);
   const [notes, setNotes] = useState("");
+  const [loc, setLoc] = useState<Coords | null>(null);
+  const [locating, setLocating] = useState(false);
+  const locate = async () => {
+    setLocating(true);
+    setErr("");
+    try {
+      setLoc(await getPosition());
+    } catch (e) {
+      setErr(geoErrorText(e));
+    } finally {
+      setLocating(false);
+    }
+  };
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -316,6 +330,8 @@ function Checkout({
         fulfillment: ful,
         zone_id: ful === "delivery" && info.zones.length ? zoneId : null,
         address: ful === "delivery" ? profile.address : null,
+        lat: ful === "delivery" && loc ? loc.lat : null,
+        lng: ful === "delivery" && loc ? loc.lng : null,
         payment_method: pay,
         notes: notes || null,
       });
@@ -385,7 +401,23 @@ function Checkout({
                 </select>
               </Field>
             ) : null}
-            <Field label="العنوان بالتفصيل">
+            {loc ? (
+              <div className="flex items-center gap-2 rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">
+                <Check className="size-4" />
+                <span className="flex-1 font-semibold">تم تحديد موقعك على الخريطة</span>
+                <a href={mapsPin(loc.lat, loc.lng)} target="_blank" rel="noreferrer" className="text-xs underline">
+                  عرض
+                </a>
+                <button type="button" onClick={() => setLoc(null)} aria-label="إلغاء الموقع" className="p-0.5">
+                  <X className="size-4" />
+                </button>
+              </div>
+            ) : (
+              <Button type="button" tone="neutral" className="w-full" loading={locating} onClick={locate}>
+                <MapPin className="size-4" /> حدد موقعي على الخريطة (اختياري)
+              </Button>
+            )}
+            <Field label={loc ? "تفاصيل العنوان (العمارة، الدور، الشقة)" : "العنوان بالتفصيل"}>
               <textarea
                 required
                 minLength={5}

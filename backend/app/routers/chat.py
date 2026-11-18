@@ -70,9 +70,11 @@ def start(slug: str, body: StartIn, request: Request, db: Session = Depends(get_
 
 class SendIn(BaseModel):
     session_id: str = Field(max_length=64)
-    kind: str = Field(pattern="^(text|button|list)$")
+    kind: str = Field(pattern="^(text|button|list|location)$")
     text: str = Field(default="", max_length=1000)
     id: str | None = Field(default=None, max_length=200)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
 
 
 @router.post("/{slug}/send")
@@ -82,9 +84,12 @@ def send(slug: str, body: SendIn, db: Session = Depends(get_db)):
     ratelimit.hit(db, f"chat_msg:{conv.id}", get_settings().chat_msgs_per_min, 60)
     if body.kind == "text" and not body.text.strip():
         raise HTTPException(status_code=422, detail="empty message")
-    if body.kind != "text" and not body.id:
+    if body.kind in ("button", "list") and not body.id:
         raise HTTPException(status_code=422, detail="reply id required")
-    msgs = conv_svc.receive(db, r, conv.id, Inbound(kind=body.kind, text=body.text.strip(), id=body.id))
+    if body.kind == "location" and (body.lat is None or body.lng is None):
+        raise HTTPException(status_code=422, detail="location needs lat and lng")
+    inbound = Inbound(kind=body.kind, text=body.text.strip(), id=body.id, lat=body.lat, lng=body.lng)
+    msgs = conv_svc.receive(db, r, conv.id, inbound)
     db.commit()
     return {"messages": [conv_svc.message_dict(m) for m in msgs]}
 

@@ -31,6 +31,8 @@ export type Order = {
   events: { status: OrderStatus; at: string }[];
   customer?: { name: string | null; phone: string } | null;
   address?: string | null;
+  location?: { lat: number; lng: number } | null;
+  driver?: { name: string; phone: string; sent_at: string } | null;
   notes?: string | null;
   is_demo?: boolean;
   conversation_id?: number | null;
@@ -56,11 +58,14 @@ export type ChatMessage = {
   created_at: string | null;
 };
 
+export type Driver = { name: string; phone: string };
+
 export type Board = {
   orders: Order[];
   human: ConvSummary[];
   accepting_orders: boolean;
   eta_minutes: number;
+  drivers: Driver[];
   open_now: boolean;
 };
 
@@ -70,5 +75,7 @@ export function messageText(p: any): string {
   if (p.type === "button_reply" || p.type === "list_reply") return p.title;
   if (p.type === "buttons") return `${p.body}\n[${p.buttons.map((b: any) => b.title).join(" | ")}]`;
   if (p.type === "list") return `${p.body}\n[☰ ${p.button}]`;
+  if (p.type === "location_request") return `${p.body}\n[📍 إرسال الموقع]`;
+  if (p.type === "location") return `📍 موقع العميل: https://www.google.com/maps?q=${p.latitude},${p.longitude}`;
   return "";
 }

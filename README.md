@@ -59,8 +59,9 @@
 1. على اللابتوب: ادخل بحساب `dash`، افتح الداشبورد، واضغط **تفعيل الصوت**.
 2. على موبايل الكلاينت: افتح رابط الشات (أو اعمل scan للـ QR).
 3. الكلاينت يطلب ← الطلب يظهر على الداشبورد مع صوت ← اضغط **قبول** ← رسالة القبول تظهر في شات الكلاينت ← **ابدأ التحضير** ← **خرج للتوصيل** / **جاهز للاستلام** ← **تم التسليم**.
-4. وريه تبويب المنيو: علّم على صنف إنه خلص، وهيختفي من البوت فورًا.
-5. بعد الميتنج: `/admin` ← Dash ← **مسح طلبات الديمو** لمسح الطلبات التجريبية.
+4. في التوصيل: الكلاينت يختار شرق أو غرب ويدوس **📍 إرسال الموقع**. على الداشبورد هيظهر **الموقع على الخريطة**، ودوس على اسم الدليفري عشان واتساب يفتح والطلب واللوكيشن جاهزين.
+5. وريه تبويب المنيو: علّم على صنف إنه خلص، وهيختفي من البوت فورًا.
+6. بعد الميتنج: `/admin` ← Dash ← **مسح طلبات الديمو** لمسح الطلبات التجريبية.
 
 قبل أي ميتنج، افتح الموقع مرة لو مكانش حد استخدمه بقاله أسبوع (Supabase المجاني بيوقف المشاريع اللي مش مستخدمة).
 
@@ -83,6 +84,12 @@ api/index.py     مدخل Vercel للـ API          vercel.json  إعدادات
 - **الأسعار بتتحسب على السيرفر بس:** السلة فيها ids وكميات بس، والإجمالي بيتحسب تاني من قاعدة البيانات عند التأكيد. الصنف اللي يخلص بيتشال من السلة مع رسالة توضيح.
 - **جاهز لواتساب:** كل رسالة من البوت بتتراجع على حدود واتساب (3 زراير، 10 صفوف في اللستة، طول العناوين) قبل ما تتحفظ.
 - **مناسب للـ serverless:** حالة المحادثة والقفل لكل عميل في Postgres (صف في `conversations` + `SELECT … FOR UPDATE`)، مفيش worker، والداشبورد والشات بيعملوا polling كل 2–3 ثواني بدل SSE.
+
+## التوصيل: المناطق واللوكيشن والدليفري
+
+- **المناطق:** كل مطعم بيحدد مناطقه بنفسه من **الإعدادات ← مناطق التوصيل**: الاسم، الرسوم، الحد الأدنى، الترتيب، تفعيل/إيقاف، إضافة ومسح. Dash دلوقتي: **شرق 20 ج** و**غرب 30 ج**. العميل بيختار منطقته من لستة، وأي تعديل بيظهر في البوت وصفحة المنيو فورًا. لو مفيش مناطق مفعلة، بتتطبق رسوم التوصيل الثابتة.
+- **لوكيشن العميل (اختياري):** في الشات البوت بيبعت رسالة طلب موقع بزرار **📍 إرسال الموقع** (نفس رسالة واتساب `location_request_message`)، والعميل يقدر يبعت موقعه من أيقونة 📍 جنب خانة الكتابة كمان. في صفحة المنيو فيه زرار **📍 حدد موقعي**. بعد اللوكيشن البوت بيسأل عن العمارة والدور والشقة. لو العميل مبعتش لوكيشن، يكتب العنوان عادي. العميل الراجع يقدر يختار «نفس العنوان» وبيتاخد اللوكيشن القديم معاه.
+- **الدليفري:** صاحب المطعم بيسجل أسامي وأرقام الدليفري من **الإعدادات ← الدليفري**. على أي طلب توصيل (مقبول / بيتجهز / خرج للتوصيل) هيظهر زرار باسم كل دليفري: بيسجل الطلب عليه، وبيفتح شات واتساب معاه والرسالة جاهزة (رقم الطلب، العميل وموبايله، المنطقة، العنوان، لينك الموقع، الأصناف، والمطلوب تحصيله)، وانت بتدوس إرسال. لو مفيش دليفري متسجلين، زرار واحد بيفتح واتساب وانت تختار الشخص. محتاج واتساب على الجهاز (WhatsApp Desktop أو Web).
 
 ## هيكل قاعدة البيانات
 
@@ -200,6 +207,8 @@ erDiagram
         text name
         text last_address
         int last_zone_id FK
+        numeric last_lat "last shared map pin"
+        numeric last_lng
         timestamptz created_at
     }
     conversations {
@@ -238,6 +247,8 @@ erDiagram
         int zone_id FK
         text zone_name_snapshot
         text address_text
+        numeric lat "customer's map pin (optional)"
+        numeric lng
         numeric subtotal
         numeric delivery_fee
         numeric total
@@ -247,6 +258,9 @@ erDiagram
         text reject_reason
         text notes
         int eta_minutes
+        text driver_name "driver the order was sent to"
+        string driver_phone
+        timestamptz driver_sent_at
         bool is_demo
         timestamptz created_at
         timestamptz updated_at
@@ -330,13 +344,14 @@ stateDiagram-v2
 | رقم المحفظة اللي بيظهر للعميل لو اختار محفظة | `""` | `wallet_number` |
 | الطلبات قبل الساعة دي بتتحسب على اليوم اللي قبله | `"05:00"` | `business_day_starts` |
 | تليفون المطعم | `""` | `contact_phone` |
+| الدليفري اللي بيتبعتلهم الطلبات على واتساب (لحد 20) | `[{"name": "أحمد", "phone": "201011112222"}]` | `drivers` |
 
 أي مفتاح مش موجود بياخد القيمة الافتراضية من `backend/app/services/settings.py`.
 
 ### أعمدة JSON
 
-- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…الصنف اللي بيتعمل…}, "fulfillment", "zone_id", "address", "payment", "page", "fails", "last_order_id"}`. السلة فيها ids بس؛ الأسعار دايمًا بتتحسب من جداول المنيو.
-- `messages.payload`: الرسايل الطالعة `{"type": "text" | "buttons" | "list", …}` بنفس شكل رسايل واتساب التفاعلية (وبتتراجع على حدود واتساب قبل الحفظ)؛ الرسايل الداخلة `{"type": "text", "text"}` أو `{"type": "button_reply" | "list_reply", "id", "title"}`.
+- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…الصنف اللي بيتعمل…}, "fulfillment", "zone_id", "address", "lat", "lng", "payment", "page", "fails", "last_order_id"}`. السلة فيها ids بس؛ الأسعار دايمًا بتتحسب من جداول المنيو.
+- `messages.payload`: الرسايل الطالعة `{"type": "text" | "buttons" | "list" | "location_request", …}` بنفس شكل رسايل واتساب التفاعلية (وبتتراجع على حدود واتساب قبل الحفظ)؛ الرسايل الداخلة `{"type": "text", "text"}` أو `{"type": "button_reply" | "list_reply", "id", "title"}` أو `{"type": "location", "latitude", "longitude"}`.
 
 ### جداول النظام
 
@@ -468,8 +483,9 @@ Passwords are **not** stored in this repo or anywhere else in plain text; they w
 1. On a laptop: log in as `dash`, open the dashboard, press **تفعيل الصوت**.
 2. On the client's phone: open the chat link (or scan the QR).
 3. Client orders → the order appears on the dashboard with a beep → press **قبول** → the acceptance message appears in the client's chat → **ابدأ التحضير** → **خرج للتوصيل** / **جاهز للاستلام** → **تم التسليم**.
-4. Show the menu tab: mark an item as sold out; it disappears from the bot immediately.
-5. Afterwards: `/admin` → Dash → **مسح طلبات الديمو** to clear test orders.
+4. Delivery: the client picks East or West and taps **📍 إرسال الموقع**. The dashboard shows **الموقع على الخريطة**; tap a driver's name and WhatsApp opens with the order and the pin ready to send.
+5. Show the menu tab: mark an item as sold out; it disappears from the bot immediately.
+6. Afterwards: `/admin` → Dash → **مسح طلبات الديمو** to clear test orders.
 
 Before a meeting, open the site once if it has been idle for a week (Supabase's free tier pauses idle projects).
 
@@ -491,6 +507,12 @@ api/index.py     Vercel serverless entry          vercel.json  Vercel config
 - **Prices are server-side only:** carts hold ids and quantities; totals are recomputed from the DB at confirmation. Sold-out items are removed with an explanation.
 - **WhatsApp-ready:** every bot message is validated against WhatsApp limits (3 buttons, 10 list rows, title lengths) before it is stored.
 - **Serverless-friendly:** conversation state and the per-customer lock live in Postgres (`conversations` row + `SELECT … FOR UPDATE`), no worker, and the dashboard / chat poll every 2–3 s instead of SSE.
+
+## Delivery: zones, location and drivers
+
+- **Zones:** each restaurant manages its own zones in **الإعدادات → مناطق التوصيل**: name, fee, minimum order, order, on/off, add and delete. Dash now has **East (شرق) 20 EGP** and **West (غرب) 30 EGP**. Customers pick their zone from a list; edits show up in the bot and the menu page immediately. With no active zones, the flat delivery fee applies.
+- **Customer location (optional):** in the chat the bot sends a location request with a **📍 إرسال الموقع** button (WhatsApp's `location_request_message`); customers can also share a pin from the 📍 icon next to the message box. The menu page has a **📍 حدد موقعي** button. After a pin the bot asks for building / floor / apartment; without a pin the customer just types the address. Returning customers can pick "same address", which reuses the saved pin.
+- **Drivers:** the owner saves driver names and numbers in **الإعدادات → الدليفري**. Every delivery order (accepted / preparing / out for delivery) shows a button per driver: it records the driver on the order and opens a WhatsApp chat with them with the message ready (order number, customer and phone, zone, address, map link, items, amount to collect); you press send. With no saved drivers, one button opens WhatsApp and you pick the contact. Needs WhatsApp on the device (WhatsApp Desktop or Web).
 
 ## Database schema
 
@@ -608,6 +630,8 @@ erDiagram
         text name
         text last_address
         int last_zone_id FK
+        numeric last_lat "last shared map pin"
+        numeric last_lng
         timestamptz created_at
     }
     conversations {
@@ -646,6 +670,8 @@ erDiagram
         int zone_id FK
         text zone_name_snapshot
         text address_text
+        numeric lat "customer's map pin (optional)"
+        numeric lng
         numeric subtotal
         numeric delivery_fee
         numeric total
@@ -655,6 +681,9 @@ erDiagram
         text reject_reason
         text notes
         int eta_minutes
+        text driver_name "driver the order was sent to"
+        string driver_phone
+        timestamptz driver_sent_at
         bool is_demo
         timestamptz created_at
         timestamptz updated_at
@@ -738,13 +767,14 @@ The customer gets a chat message on `accepted` (with the ETA), `out_for_delivery
 | `wallet_number` | `""` | Shown to customers who pick wallet |
 | `business_day_starts` | `"05:00"` | Orders before this hour count for the previous day |
 | `contact_phone` | `""` | Restaurant phone |
+| `drivers` | `[{"name": "أحمد", "phone": "201011112222"}]` | Delivery drivers orders are sent to on WhatsApp (up to 20) |
 
 Missing keys fall back to the defaults in `backend/app/services/settings.py`.
 
 ### JSON columns
 
-- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…item being built…}, "fulfillment", "zone_id", "address", "payment", "page", "fails", "last_order_id"}`. The cart holds ids only; prices are always recomputed from the menu tables.
-- `messages.payload`: outgoing `{"type": "text" | "buttons" | "list", …}` in the same shape as WhatsApp interactive messages (validated against WhatsApp limits before saving); incoming `{"type": "text", "text"}` or `{"type": "button_reply" | "list_reply", "id", "title"}`.
+- `conversations.data`: `{"cart": [{"variant_id", "addon_ids", "qty"}], "pending": {…item being built…}, "fulfillment", "zone_id", "address", "lat", "lng", "payment", "page", "fails", "last_order_id"}`. The cart holds ids only; prices are always recomputed from the menu tables.
+- `messages.payload`: outgoing `{"type": "text" | "buttons" | "list" | "location_request", …}` in the same shape as WhatsApp interactive messages (validated against WhatsApp limits before saving); incoming `{"type": "text", "text"}`, `{"type": "button_reply" | "list_reply", "id", "title"}` or `{"type": "location", "latitude", "longitude"}`.
 
 ### System tables
 

@@ -101,7 +101,7 @@ export default function Dashboard() {
           </button>
         </div>
       ) : null}
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
+      <header className="top-0 z-30 border-b border-line bg-surface/95 backdrop-blur lg:sticky">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
           <div className="flex items-center gap-2">
             <img src="/favicon.svg" alt="" className="size-8" />
@@ -182,7 +182,7 @@ export default function Dashboard() {
       </header>
 
       {board?.human.length ? (
-        <div className="sticky top-[105px] z-20 mx-auto max-w-[1600px] px-4 pt-3">
+        <div className="top-[105px] z-20 mx-auto max-w-[1600px] px-4 pt-3 lg:sticky">
           {board.human.map((c) => (
             <div key={c.id} className="mb-2 flex items-center gap-3 rounded-xl border border-danger bg-danger-soft px-4 py-2.5 text-danger">
               <BellRing className="size-5 shrink-0" />
@@ -198,7 +198,7 @@ export default function Dashboard() {
       <main className="mx-auto max-w-[1600px] p-4">
         <Routes>
           <Route index element={<BoardView board={board} now={now} onChanged={upsert} onOpenChat={setChatId} />} />
-          <Route path="history" element={<History onOpenChat={setChatId} />} />
+          <Route path="history" element={<History onOpenChat={setChatId} drivers={board?.drivers ?? []} />} />
           <Route path="menu" element={<MenuEditor />} />
           <Route path="chats" element={<Chats onOpen={setChatId} />} />
           {me.can_manage ? <Route path="settings" element={<SettingsPage />} /> : null}
@@ -227,7 +227,7 @@ function BoardView({ board, now, onChanged, onOpenChat }: { board: BoardT | null
             </h2>
             <div className="space-y-3">
               {orders.length ? (
-                orders.map((o) => <OrderCard key={o.id} order={o} now={now} onChanged={onChanged} onOpenChat={onOpenChat} />)
+                orders.map((o) => <OrderCard key={o.id} order={o} now={now} onChanged={onChanged} onOpenChat={onOpenChat} drivers={board.drivers} />)
               ) : (
                 <div className="rounded-2xl border border-dashed border-line">
                   <Empty title="مفيش طلبات هنا" />

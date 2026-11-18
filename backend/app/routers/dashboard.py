@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -32,7 +33,7 @@ from ..services import conversations as conv_svc
 from ..services import hours, menu
 from ..services import settings as settings_svc
 from ..services.notify import notify_status
-from ..services.orders import ACTIVE_STATUSES, TransitionError, load_order, serialize, transition
+from ..services.orders import ACTIVE_STATUSES, TransitionError, driver_message, load_order, serialize, transition
 
 router = APIRouter(prefix="/dash", tags=["dashboard"])
 
@@ -100,6 +101,7 @@ def board(ctx: Ctx = Depends(require_restaurant), db: Session = Depends(get_db))
         "human": [_conv_summary(db, c) for c in human],
         "accepting_orders": s["accepting_orders"],
         "eta_minutes": s["eta_minutes"],
+        "drivers": s["drivers"],
         "open_now": hours.is_open(s["working_hours"], r.timezone),
         "server_time": dt.datetime.now(dt.UTC).isoformat(),
     }
@@ -160,6 +162,38 @@ def change_status(order_id: int, body: StatusIn, ctx: Ctx = Depends(require_rest
     data = serialize(load_order(db, r.id, order_id))
     data["customer_notified"] = notified
     return data
+
+
+class DriverIn(BaseModel):
+    phone: str | None = Field(default=None, max_length=32)  # None = share without assigning
+
+
+DRIVER_STATUSES = ("accepted", "preparing", "out_for_delivery")
+
+
+@router.post("/orders/{order_id}/driver")
+def send_to_driver(order_id: int, body: DriverIn, ctx: Ctx = Depends(require_restaurant), db: Session = Depends(get_db)):
+    """Record which driver got the order and return a ready WhatsApp link
+    (wa.me with the order, address and map pin) for the dashboard to open."""
+    _, r = ctx
+    order = load_order(db, r.id, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="not_found")
+    if order.fulfillment != "delivery" or order.status not in DRIVER_STATUSES:
+        raise HTTPException(status_code=409, detail="الطلب ده مش جاهز للدليفري")
+    text = driver_message(order, r.name_ar)
+    target = ""
+    if body.phone:
+        phone = settings_svc.normalize_phone(body.phone)
+        driver = next((d for d in settings_svc.get_all(db, r.id)["drivers"] if d["phone"] == phone), None)
+        if driver is None:
+            raise HTTPException(status_code=422, detail="الدليفري ده مش متسجل")
+        order.driver_name, order.driver_phone = driver["name"], driver["phone"]
+        order.driver_sent_at = dt.datetime.now(dt.UTC)
+        target = driver["phone"]
+        db.commit()
+        order = load_order(db, r.id, order_id)
+    return {"order": serialize(order), "whatsapp_url": f"https://wa.me/{target}?text={quote(text)}", "text": text}
 
 
 @router.get("/customers/{phone}/orders")

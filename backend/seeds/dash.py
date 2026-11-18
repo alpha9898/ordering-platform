@@ -75,7 +75,7 @@ ADDONS = [
 ]
 CRUST = ("كونو موتزاريلا", 25)  # crepe-only add-on
 
-ZONES = [("قريب (أقل من 2 كم)", 15, 0), ("متوسط (2 - 5 كم)", 25, 0), ("بعيد (5 - 8 كم)", 35, 150)]
+ZONES = [("شرق", 20, 0), ("غرب", 30, 0)]  # each restaurant edits its own zones in Settings
 
 
 # Production: SEED_SKIP_USERS=1 seeds only the restaurant + menu. The first

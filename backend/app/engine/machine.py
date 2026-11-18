@@ -32,11 +32,13 @@ from .messages import (
     Buttons,
     Inbound,
     List,
+    LocationRequest,
     Outgoing,
     Row,
     Section,
     Text,
     fit,
+    valid_coords,
 )
 
 HUMAN_SILENCE = dt.timedelta(minutes=30)
@@ -166,7 +168,7 @@ class Engine:
         return List(body=fit(body, MAX_BODY), button=button, sections=sections)
 
     def _reset_checkout(self) -> None:
-        for k in ("fulfillment", "zone_id", "address", "payment", "pending", "edit_key"):
+        for k in ("fulfillment", "zone_id", "address", "lat", "lng", "payment", "pending", "edit_key"):
             self.d.pop(k, None)
 
     # ------------------------------------------------------------ global flows
@@ -220,6 +222,8 @@ class Engine:
             return self.ask_zone(self.d.get("page", 0), prefix=prefix)
         if st == "ADDRESS":
             return self.ask_address(prefix=prefix)
+        if st == "ADDRESS_DETAILS":
+            return [Text(f"{prefix}\n{T.ASK_DETAILS}" if prefix else T.ASK_DETAILS)]
         if st == "PAYMENT":
             return self.ask_payment(prefix=prefix)
         if st == "CONFIRM":
@@ -578,14 +582,17 @@ class Engine:
         s = self.ctx.settings
         if rid_ == "ful:delivery" and s["delivery_enabled"]:
             self.d["fulfillment"] = "delivery"
-            self.d.pop("zone_id", None)
-            self.d.pop("address", None)
+            for k in ("zone_id", "address", "lat", "lng"):
+                self.d.pop(k, None)
             return self.start_delivery()
         if rid_ == "ful:pickup" and s["pickup_enabled"]:
             self.d["fulfillment"] = "pickup"
-            self.d.pop("zone_id", None)
-            self.d.pop("address", None)
+            for k in ("zone_id", "address", "lat", "lng"):
+                self.d.pop(k, None)
             return self.ask_payment()
+        if inb.kind == "location" and self.d.get("fulfillment") == "delivery" and "zone_id" in self.d:
+            # a pin shared at any later checkout step updates the delivery location
+            return self.receive_location(inb)
         if rid_.startswith("zone:") and self.d.get("fulfillment") == "delivery":
             return self.choose_zone(_int(rid_[5:]))
         if rid_.startswith("zones:page:") and self.d.get("fulfillment") == "delivery":
@@ -658,7 +665,9 @@ class Engine:
         cust = self.ctx.customer
         same_zone = cust is not None and (self.d.get("zone_id") is None or cust.last_zone_id == self.d.get("zone_id"))
         if cust is not None and cust.last_address and same_zone:
-            body = f"نوصل على نفس العنوان؟\n📍 {cust.last_address}"
+            body = f"نوصل على نفس العنوان؟\n🏠 {cust.last_address}"
+            if cust.last_lat is not None:
+                body += "\n📍 ومعاه موقعك على الخريطة"
             if prefix:
                 body = f"{prefix}\n{body}"
             return [
@@ -667,20 +676,48 @@ class Engine:
                     buttons=[Button("addr:same", "✅ نفس العنوان"), Button("addr:new", "✏️ عنوان جديد")],
                 )
             ]
-        return [Text(f"{prefix}\n{T.ASK_ADDRESS}" if prefix else T.ASK_ADDRESS)]
+        return [LocationRequest(body=f"{prefix}\n{T.ASK_LOCATION}" if prefix else T.ASK_LOCATION)]
 
     def on_address(self, rid_: str, text: str, inb: Inbound):
         cust = self.ctx.customer
         if rid_ == "addr:same" and cust is not None and cust.last_address:
             self.d["address"] = cust.last_address
+            if cust.last_lat is not None and cust.last_lng is not None:
+                self.d["lat"], self.d["lng"] = float(cust.last_lat), float(cust.last_lng)
             return self.ask_payment()
         if rid_ == "addr:new":
-            return [Text(T.ASK_ADDRESS)]
+            self.d.pop("lat", None)
+            self.d.pop("lng", None)
+            return [LocationRequest(body=T.ASK_LOCATION)]
+        if inb.kind == "location":
+            return self.receive_location(inb)
         if inb.kind == "text" and inb.text.strip():
             addr = " ".join(inb.text.split())
             if len(addr) < 8:
                 return [Text(T.ADDRESS_SHORT)]
             self.d["address"] = addr[:300]
+            self.d.pop("lat", None)  # typed address only, no pin
+            self.d.pop("lng", None)
+            return self.ask_payment()
+        return self._checkout_ids(rid_, text, inb)
+
+    def receive_location(self, inb: Inbound) -> list[Outgoing]:
+        if not valid_coords(inb.lat, inb.lng):
+            self.state = "ADDRESS"
+            return [Text(T.BAD_LOCATION)]
+        self.d["lat"], self.d["lng"] = round(float(inb.lat), 6), round(float(inb.lng), 6)
+        self.d.pop("address", None)
+        self.state = "ADDRESS_DETAILS"
+        return [Text(T.ASK_DETAILS)]
+
+    def on_address_details(self, rid_: str, text: str, inb: Inbound):
+        if inb.kind == "location":
+            return self.receive_location(inb)
+        if inb.kind == "text" and inb.text.strip():
+            details = " ".join(inb.text.split())
+            if len(details) < 5:
+                return [Text(T.DETAILS_SHORT)]
+            self.d["address"] = details[:300]
             return self.ask_payment()
         return self._checkout_ids(rid_, text, inb)
 
@@ -720,6 +757,8 @@ class Engine:
             lines += [f"التوصيل: {T.egp(fee)}", f"الإجمالي: {T.egp(total)}"]
             where = f"{zone.name_ar} - " if zone else ""
             lines.append(f"🛵 توصيل: {where}{self.d.get('address', '')}")
+            if self.d.get("lat") is not None:
+                lines.append("📍 موقعك على الخريطة وصل للمطعم")
         else:
             lines += [f"الإجمالي: {T.egp(total)}", "🏃 استلام من المطعم"]
         lines.append(f"💵 الدفع: {T.PAYMENT_AR[self.d.get('payment', 'cod')]}")
@@ -757,6 +796,8 @@ class Engine:
                 channel=self.ctx.conv.channel,
                 zone_id=self.d.get("zone_id"),
                 address=self.d.get("address"),
+                lat=self.d.get("lat"),
+                lng=self.d.get("lng"),
                 conversation_id=self.ctx.conv.id,
                 priced=cart,
                 now=self.ctx.now,

@@ -3,7 +3,7 @@ import { Search } from "lucide-react";
 import { get } from "../../lib/api";
 import { CHANNEL_LABEL, STATUS_LABEL, STATUS_TONE, clock, displayPhone, money } from "../../lib/format";
 import { useNow } from "../../lib/hooks";
-import type { Order } from "../../lib/types";
+import type { Driver, Order } from "../../lib/types";
 import { Badge, Card, Empty, Input, Modal, Spinner } from "../../components/ui";
 import OrderCard from "./OrderCard";
 
@@ -12,7 +12,7 @@ function today(): string {
   return d.toLocaleDateString("en-CA");
 }
 
-export default function History({ onOpenChat }: { onOpenChat: (id: number) => void }) {
+export default function History({ onOpenChat, drivers }: { onOpenChat: (id: number) => void; drivers: Driver[] }) {
   const [day, setDay] = useState(today());
   const [q, setQ] = useState("");
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -81,7 +81,10 @@ export default function History({ onOpenChat }: { onOpenChat: (id: number) => vo
                         {displayPhone(o.customer?.phone)}
                       </div>
                     </td>
-                    <td className="px-4 py-2.5">{o.fulfillment === "delivery" ? "توصيل" : "استلام"}</td>
+                    <td className="px-4 py-2.5">
+                      {o.fulfillment === "delivery" ? "توصيل" : "استلام"}
+                      {o.driver ? <div className="text-xs text-muted">🛵 {o.driver.name}</div> : null}
+                    </td>
                     <td className="px-4 py-2.5 text-muted">{CHANNEL_LABEL[o.channel]}</td>
                     <td className="num px-4 py-2.5 font-semibold">{money(o.total)}</td>
                     <td className="px-4 py-2.5">
@@ -99,6 +102,7 @@ export default function History({ onOpenChat }: { onOpenChat: (id: number) => vo
           <OrderCard
             order={open}
             now={now}
+            drivers={drivers}
             onOpenChat={(id) => {
               setOpen(null);
               onOpenChat(id);

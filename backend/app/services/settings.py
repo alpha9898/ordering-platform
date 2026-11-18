@@ -32,6 +32,8 @@ DEFAULTS: dict[str, Any] = {
     "wallet_number": "",
     "business_day_starts": "05:00",
     "contact_phone": "",
+    # delivery drivers the dashboard can send orders to: [{"name", "phone"}]
+    "drivers": [],
 }
 
 # What each role may change from the dashboard
@@ -41,6 +43,19 @@ OWNER_KEYS = set(DEFAULTS)
 
 class SettingsError(ValueError):
     pass
+
+
+_AR_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def normalize_phone(raw: str) -> str | None:
+    """Egyptian-friendly phone normalization: 01xxxxxxxxx -> 201xxxxxxxxx."""
+    digits = "".join(ch for ch in (raw or "").translate(_AR_DIGITS) if ch.isdigit())
+    if digits.startswith("0020"):
+        digits = digits[2:]
+    if digits.startswith("01") and len(digits) == 11:
+        digits = "2" + digits
+    return digits if 8 <= len(digits) <= 15 else None
 
 
 def get_all(db: Session, restaurant_id: int) -> dict[str, Any]:
@@ -93,6 +108,22 @@ def validate(key: str, value: Any) -> Any:
         value = clean
     elif key == "business_day_starts":
         value = _hhmm(value)
+    elif key == "drivers":
+        if not isinstance(value, list) or len(value) > 20:
+            raise SettingsError("drivers must be a list of up to 20")
+        clean, seen = [], set()
+        for d in value:
+            if not isinstance(d, dict):
+                raise SettingsError("each driver needs name and phone")
+            name = " ".join(str(d.get("name", "")).split())
+            phone = normalize_phone(str(d.get("phone", "")))
+            if not 1 <= len(name) <= 40 or phone is None:
+                raise SettingsError("كل دليفري محتاج اسم ورقم موبايل صحيح")
+            if phone in seen:
+                raise SettingsError("رقم الدليفري متكرر")
+            seen.add(phone)
+            clean.append({"name": name, "phone": phone})
+        value = clean
     elif key in {"wallet_number", "contact_phone"}:
         if not isinstance(value, str) or len(value) > 40:
             raise SettingsError(f"{key} must be a short string")

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
+from ..engine.messages import valid_coords
 from ..models import (
     Customer,
     DeliveryZone,
@@ -116,6 +117,8 @@ def create_order(
     channel: str,
     zone_id: int | None = None,
     address: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
     notes: str | None = None,
     conversation_id: int | None = None,
     priced: PricedCart | None = None,
@@ -156,6 +159,10 @@ def create_order(
         address = (address or "").strip()
         if len(address) < 5:
             raise OrderError("address_required", "اكتب العنوان بالتفصيل")
+        if (lat is None) != (lng is None) or (lat is not None and not valid_coords(lat, lng)):
+            raise OrderError("bad_location", "الموقع مش صحيح")
+    else:
+        lat = lng = None
 
     day = hours.business_day(restaurant.timezone, settings["business_day_starts"], now)
     order = Order(
@@ -170,6 +177,8 @@ def create_order(
         zone_id=zone.id if zone else None,
         zone_name_snapshot=zone.name_ar if zone else None,
         address_text=address if fulfillment == "delivery" else None,
+        lat=Decimal(str(round(float(lat), 6))) if lat is not None else None,
+        lng=Decimal(str(round(float(lng), 6))) if lng is not None else None,
         subtotal=cart.subtotal,
         delivery_fee=fee,
         total=cart.subtotal + fee,
@@ -198,6 +207,8 @@ def create_order(
     if fulfillment == "delivery":
         customer.last_address = address
         customer.last_zone_id = zone.id if zone else None
+        customer.last_lat = order.lat  # cleared when the new address has no pin
+        customer.last_lng = order.lng
     db.flush()
     return order
 
@@ -276,6 +287,14 @@ def serialize(order: Order, *, private: bool = True) -> dict:
             {
                 "customer": {"name": order.customer.name, "phone": order.customer.phone} if order.customer else None,
                 "address": order.address_text,
+                "location": {"lat": float(order.lat), "lng": float(order.lng)} if order.lat is not None else None,
+                "driver": {
+                    "name": order.driver_name,
+                    "phone": order.driver_phone,
+                    "sent_at": order.driver_sent_at.isoformat() if order.driver_sent_at else None,
+                }
+                if order.driver_sent_at
+                else None,
                 "notes": order.notes,
                 "is_demo": order.is_demo,
                 "conversation_id": order.conversation_id,
@@ -283,3 +302,40 @@ def serialize(order: Order, *, private: bool = True) -> dict:
             }
         )
     return data
+
+
+def maps_url(lat, lng) -> str:
+    return f"https://www.google.com/maps?q={float(lat):.6f},{float(lng):.6f}"
+
+
+def local_phone(phone: str | None) -> str:
+    if phone and phone.startswith("20") and len(phone) == 12:
+        return "0" + phone[2:]
+    return phone or ""
+
+
+def driver_message(order: Order, restaurant_name: str) -> str:
+    """Ready-to-send WhatsApp text for the delivery driver."""
+    lines = [f"🛵 طلب توصيل #{order.order_no} — {restaurant_name}"]
+    if order.customer:
+        lines.append(f"👤 العميل: {order.customer.name or '-'}")
+        lines.append(f"📞 {local_phone(order.customer.phone)}")
+    if order.zone_name_snapshot:
+        lines.append(f"📍 المنطقة: {order.zone_name_snapshot}")
+    if order.address_text:
+        lines.append(f"🏠 العنوان: {order.address_text}")
+    if order.lat is not None and order.lng is not None:
+        lines.append(f"🗺️ الموقع: {maps_url(order.lat, order.lng)}")
+    lines.append("🍔 الطلب:")
+    for it in order.items:
+        name = f"{it.name_snapshot} ({it.variant_snapshot})" if it.variant_snapshot else it.name_snapshot
+        extra = " + " + "، ".join(a.name_snapshot for a in it.addons) if it.addons else ""
+        lines.append(f"• {it.qty}× {name}{extra}")
+    if order.notes:
+        lines.append(f"📝 {order.notes}")
+    total = f"{money(order.total):g} ج"
+    if order.payment_method == "cod":
+        lines.append(f"💵 المطلوب تحصيله: {total} (كاش)")
+    else:
+        lines.append(f"💳 الدفع: محفظة ({total})")
+    return "\n".join(lines)
